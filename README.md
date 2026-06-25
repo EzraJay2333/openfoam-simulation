@@ -1,5 +1,8 @@
 # OpenFOAM Simulation Skill
 
+[![English](https://img.shields.io/badge/lang-English-blue)](README.md)
+[![简体中文](https://img.shields.io/badge/lang-简体中文-red)](README_CN.md)
+
 12-step OpenFOAM fluid simulation skill for Claude Code — plan, build, run, validate, and document CFD simulations on Linux/WSL. Specializes in fluid topology/shape optimization with a self-learning knowledge base.
 
 ## Quick Install
