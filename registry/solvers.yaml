@@ -1,0 +1,198 @@
+# OpenFOAM Solver Registry
+# This file records known solver capabilities for matching during Step 6.
+# It is informational — always verify against the installed environment.
+# Status: validated | experimental | deprecated
+
+solvers:
+  # === Incompressible Steady Primal ===
+  simpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.0"
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "Workhorse steady incompressible solver. SIMPLE algorithm."
+    status: validated
+
+  porousSimpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.0"
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal, porous-media]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "simpleFoam with Darcy-Forchheimer porous media. Can be used for Brinkman-penalized topology optimization with external optimizer."
+    status: validated
+
+  # === Incompressible Transient Primal ===
+  pisoFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.0"
+    flow_regime: [transient, incompressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "Transient solver using PISO algorithm."
+    status: validated
+
+  pimpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.6"
+    flow_regime: [transient, incompressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS, LES, DES]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "PIMPLE = PISO + SIMPLE. Larger timesteps than pisoFoam. Supports LES/DES."
+    status: validated
+
+  # === Incompressible Adjoint (Foundation) ===
+  adjointShapeOptimizationFoam:
+    distribution: [openfoam.org]
+    first_version: "2.0"
+    last_version: "12"
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar]  # RANS adjoint not officially supported in Foundation version
+    geometry: [3d]
+    optimisation_support: shape
+    support_level: native
+    objectives: [pressure-loss, drag, uniformity]
+    design_variables: [boundary-displacement]
+    notes: "Foundation distribution only. Surface-based shape sensitivities. Laminar flow."
+    status: validated
+
+  # === Incompressible Adjoint (OpenCFD - Modern) ===
+  adjointOptimisationFoam:
+    distribution: [openfoam.com]
+    first_version: "2206"
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal, conjugate-heat-transfer]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: [shape, density-topology]
+    support_level: native
+    objectives: [pressure-loss, drag, uniformity, heat-transfer, multi-objective]
+    design_variables: [boundary-displacement, porosity-field]
+    notes: >
+      Major adjoint library overhaul in v2206. Supports topology (porosity-based)
+      and shape optimization. Multi-objective cost functions. Includes Helmholtz
+      filtering and regularisation. Thermal objectives with CHT.
+    status: validated
+
+  # === Incompressible Adjoint (OpenCFD - Legacy) ===
+  adjointShapeOptimizationFoam_com:
+    distribution: [openfoam.com]
+    first_version: "1912"
+    last_version: "2112"
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS]
+    geometry: [3d]
+    optimisation_support: shape
+    support_level: native
+    objectives: [pressure-loss, drag]
+    design_variables: [boundary-displacement]
+    notes: >
+      Legacy ESI solver, superseded by adjointOptimisationFoam in v2206.
+      Check -help to verify availability; may have been removed.
+    status: deprecated
+
+  # === Compressible ===
+  rhoSimpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.0"
+    flow_regime: [steady, compressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "Steady compressible solver. No native adjoint."
+    status: validated
+
+  rhoPimpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "2.0"
+    flow_regime: [transient, compressible]
+    physics: [single-phase, isothermal]
+    turbulence: [laminar, RANS, LES, DES]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: primal_only
+    notes: "Transient compressible solver. No native adjoint."
+    status: validated
+
+  # === Multiphase ===
+  interFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.0"
+    flow_regime: [transient, incompressible]
+    physics: [multiphase, isothermal, VOF]
+    turbulence: [laminar, RANS, LES]
+    geometry: [2d-planar, 3d]
+    optimisation_support: none
+    notes: "Two-phase incompressible (VOF). No native adjoint. External optimizer required."
+    status: validated
+
+  # === Heat Transfer ===
+  chtMultiRegionFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "2.0"
+    flow_regime: [steady, transient, incompressible, compressible]
+    physics: [single-phase, conjugate-heat-transfer]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_support: external_only
+    notes: "Multi-region conjugate heat transfer. No native adjoint. Pair with external optimizer or use adjointOptimisationFoam (OpenCFD) for CHT adjoint."
+    status: validated
+
+  buoyantSimpleFoam:
+    distribution: [openfoam.org, openfoam.com]
+    first_version: "1.6"
+    flow_regime: [steady, compressible]  # weakly compressible
+    physics: [single-phase, buoyancy, natural-convection]
+    turbulence: [laminar, RANS]
+    geometry: [2d-planar, 3d]
+    optimisation_support: none
+    notes: "Buoyancy-driven flow. No native adjoint."
+    status: validated
+
+  # === Custom/External Optimisation Patterns ===
+  external_optimizer:
+    distribution: [openfoam.org, openfoam.com]
+    flow_regime: [steady, transient]
+    physics: [any]
+    optimisation_support: [shape, density-topology, parameter-sweep]
+    support_level: external
+    description: >
+      Any OpenFOAM solver can be used with an external optimizer (DAKOTA, pyOpt,
+      SciPy, custom Python). OpenFOAM evaluates primal (and optionally adjoint)
+      objectives while the external tool updates design variables. Requires user
+      to install and configure the external tool.
+    status: validated
+
+# === External Optimization Tools ===
+external_tools:
+  DAKOTA:
+    type: optimization_framework
+    url: "https://dakota.sandia.gov/"
+    methods: [gradient-based, gradient-free, surrogate, multi-objective]
+    interface: file-based (parameter files, results files)
+    support_level: external
+
+  pyOpt:
+    type: python_optimization_library
+    url: "https://github.com/madebr/pyOpt"
+    methods: [gradient-based, gradient-free]
+    interface: Python API
+    support_level: external
+
+  scipy.optimize:
+    type: python_optimization_library
+    url: "https://docs.scipy.org/doc/scipy/reference/optimize.html"
+    methods: [gradient-based, gradient-free]
+    interface: Python API
+    support_level: external

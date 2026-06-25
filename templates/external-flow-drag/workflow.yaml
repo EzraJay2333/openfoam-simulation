@@ -1,0 +1,43 @@
+workflow:
+  name: "external-flow-drag"
+  status: validated
+  distribution:
+    - "openfoam.org:10"
+    - "openfoam.com:2206"
+  problem_fingerprint:
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    geometry_class: [external]
+    spatial_dimensions: [2d-planar, 3d]
+    optimisation_family: [shape]
+    objectives: [drag]
+    constraints: [volume, lift]
+    design_variables: [boundary-displacement]
+  support_level: native
+  prerequisites:
+    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "snappyHexMesh for body-fitted mesh generation"
+    - "kOmegaSST or SpalartAllmaras turbulence model"
+    - "Displacement-based mesh morphing (mesh.update(), moveDynamicMesh)"
+  steps:
+    - stage: environment
+      description: "Verify adjoint solver and turbulence model availability"
+    - stage: mesh
+      description: "Generate body-fitted mesh with boundary layers via snappyHexMesh"
+    - stage: primal
+      description: "Converge RANS primal with kOmegaSST or SA"
+    - stage: adjoint
+      description: "Compute drag sensitivities via adjoint solve"
+    - stage: morph
+      description: "Morph mesh using sensitivity-weighted displacement"
+    - stage: iterate
+      description: "Loop primal→adjoint→morph until convergence"
+    - stage: validate
+      description: "Check Cd reduction, constraint satisfaction, mesh quality"
+  known_issues:
+    - "Foundation solver freezes turbulence — inaccurate gradients for separated flows"
+    - "Mesh morphing may produce negative volumes for >20% boundary displacement"
+    - "y+ must stay in valid range across mesh morphing (wall functions or low-Re)"
+  references:
+    - "Othmer (2014) - Adjoint methods for car aerodynamics"
+    - "Karpouzas & Papoutsis-Kiachagias (2021) - Continuous adjoint for external aerodynamics"

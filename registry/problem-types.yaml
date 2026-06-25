@@ -1,0 +1,232 @@
+# Problem Type Classification Registry
+# Used in Step 5 (Problem Classification) to fingerprint any simulation request.
+
+# Classification dimensions and their valid values
+dimensions:
+  flow_regime:
+    steady:
+      description: "Time-invariant flow"
+      typical_solver_pattern: "simpleFoam, rhoSimpleFoam"
+    transient:
+      description: "Time-dependent flow"
+      typical_solver_pattern: "pisoFoam, pimpleFoam, rhoPimpleFoam"
+
+  compressibility:
+    incompressible:
+      description: "Constant density, Ma < 0.3"
+      density_model: constant
+    weakly_compressible:
+      description: "Variable density via equation of state, low Ma"
+      density_model: equation_of_state
+    compressible:
+      description: "Full compressible, Ma > 0.3"
+      density_model: equation_of_state
+
+  turbulence:
+    laminar:
+      description: "No turbulence model"
+      Re_range: "< critical Re"
+    RANS:
+      description: "Reynolds-Averaged Navier-Stokes"
+      models: [kEpsilon, kOmega, kOmegaSST, SpalartAllmaras, kOmegaSSTLM]
+    LES:
+      description: "Large Eddy Simulation"
+      models: [Smagorinsky, WALE, kEqn, dynamicKEqn]
+    DES:
+      description: "Detached Eddy Simulation (hybrid RANS-LES)"
+
+  phases:
+    single-phase:
+      description: "One fluid phase"
+    multiphase:
+      description: "Multiple fluid phases"
+      models: [VOF, Eulerian, Lagrangian]
+
+  thermal:
+    isothermal:
+      description: "No temperature equation"
+    heat_transfer:
+      description: "Temperature equation solved (no buoyancy coupling)"
+    conjugate_heat_transfer:
+      description: "Solid and fluid regions with heat exchange"
+    buoyancy:
+      description: "Temperature-dependent density drives flow (natural/mixed convection)"
+    radiation:
+      description: "Radiative heat transfer included"
+
+  species:
+    none:
+      description: "No species transport"
+    passive_scalar:
+      description: "Passive scalar transport"
+    reacting:
+      description: "Reacting species transport"
+    combustion:
+      description: "Combustion with reaction kinetics"
+
+  rheology:
+    newtonian:
+      description: "Constant viscosity"
+    non_newtonian:
+      description: "Shear-rate dependent viscosity"
+      models: [powerLaw, HerschelBulkley, Casson, BirdCarreau]
+
+  geometry_class:
+    internal:
+      description: "Flow confined by walls (pipe, duct, manifold)"
+    external:
+      description: "Flow around a body (airfoil, vehicle, building)"
+    mixed:
+      description: "Both internal and external regions"
+
+  spatial_dimensions:
+    "2d-planar":
+      description: "Two-dimensional, planar geometry"
+    "2d-axisymmetric":
+      description: "Two-dimensional, axisymmetric (wedge) geometry"
+    "3d":
+      description: "Three-dimensional geometry"
+
+  mesh_motion:
+    stationary:
+      description: "Fixed mesh"
+    rotating:
+      description: "Rotating reference frame or sliding mesh"
+    moving:
+      description: "Deforming or moving mesh"
+    overset:
+      description: "Overset/chimera mesh"
+
+  optimisation_family:
+    none:
+      description: "Forward/primal simulation only"
+    shape:
+      description: "Boundary deformation with preserved topology"
+      design_variables: [boundary_displacement, control_points]
+      typical_openfoam: adjointShapeOptimizationFoam or adjointOptimisationFoam
+    density-topology:
+      description: "Material distribution via porosity/density field"
+      design_variables: [porosity_field]
+      typical_openfoam: adjointOptimisationFoam or external optimizer
+    level-set:
+      description: "Explicit interface tracking"
+      design_variables: [interface_position]
+      typical_openfoam: custom or third-party
+    parameter-sweep:
+      description: "Discrete parameter variation"
+      design_variables: [geometric_parameters, physical_parameters]
+      typical_openfoam: any solver + external orchestration
+    external:
+      description: "Optimisation driven by external tool"
+      design_variables: [any]
+      typical_openfoam: any solver + DAKOTA/pyOpt/SciPy
+
+  objectives:
+    pressure_loss:
+      description: "Minimize total or static pressure drop"
+      typical_cost_function: "pressureDrop"
+    drag:
+      description: "Minimize drag force or coefficient"
+      typical_cost_function: "drag"
+    lift:
+      description: "Maximize lift or lift-to-drag ratio"
+      typical_cost_function: "lift" or "liftToDrag"
+    uniformity:
+      description: "Minimize flow maldistribution"
+      typical_cost_function: "uniformity" or "flowRateVariance"
+    heat_transfer:
+      description: "Maximize heat transfer rate or minimize max temperature"
+      typical_cost_function: "heatTransfer" or "maxTemperature"
+    multi_objective:
+      description: "Trade off multiple competing objectives"
+      typical_cost_function: "weighted sum or Pareto"
+
+  constraints:
+    volume:
+      description: "Limit solid/fluid volume fraction"
+    pressure:
+      description: "Limit maximum or minimum pressure"
+    temperature:
+      description: "Limit maximum temperature"
+    stress:
+      description: "Limit mechanical stress"
+    manufacturing:
+      description: "Manufacturing constraints (draft angles, min feature size)"
+
+# Problem fingerprinting template
+fingerprint_template:
+  flow_regime: null
+  compressibility: null
+  turbulence: null
+  phases: null
+  thermal: null
+  species: null
+  rheology: null
+  geometry_class: null
+  spatial_dimensions: null
+  mesh_motion: null
+  optimisation_family: null
+  objectives: []
+  constraints: []
+  design_variables: []
+
+# Fingerprint → Known Workflow Mapping
+# Maps problem fingerprints to learned-workflow filenames
+known_mappings:
+  - fingerprint:
+      flow_regime: steady
+      compressibility: incompressible
+      turbulence: laminar
+      phases: single-phase
+      thermal: isothermal
+      geometry_class: internal
+      optimisation_family: shape
+      objectives: [pressure_loss]
+      constraints: [volume]
+    workflows:
+      - "internal-flow-pressure-loss"
+      - "duct-shape-optimization"
+    support_level: native
+
+  - fingerprint:
+      flow_regime: steady
+      compressibility: incompressible
+      turbulence: laminar
+      phases: single-phase
+      thermal: conjugate_heat_transfer
+      geometry_class: internal
+      optimisation_family: density-topology
+      objectives: [heat_transfer, pressure_loss]
+      constraints: [volume]
+    workflows:
+      - "porous-density-topology"
+    support_level: native  # OpenCFD v2206+
+
+  - fingerprint:
+      flow_regime: steady
+      compressibility: incompressible
+      turbulence: RANS
+      phases: single-phase
+      thermal: isothermal
+      geometry_class: external
+      optimisation_family: shape
+      objectives: [drag]
+      constraints: [volume]
+    workflows:
+      - "external-flow-drag"
+    support_level: native
+
+  - fingerprint:
+      flow_regime: steady
+      compressibility: incompressible
+      turbulence: laminar
+      phases: single-phase
+      thermal: isothermal
+      geometry_class: internal
+      optimisation_family: density-topology
+      objectives: [pressure_loss]
+      constraints: [volume]
+    workflows:
+      - "internal-flow-pressure-loss-topology"
+      - "porous-density-topology"
+    support_level: native  # OpenCFD v2206+

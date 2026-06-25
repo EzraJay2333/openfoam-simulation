@@ -1,0 +1,5 @@
+# Test artifacts
+detected_environment.json
+inspect_openfoam.json
+*.pyc
+__pycache__/

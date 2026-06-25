@@ -1,0 +1,41 @@
+workflow:
+  name: "duct-shape-optimization"
+  status: validated
+  distribution:
+    - "openfoam.org:10"
+    - "openfoam.com:2206"
+  problem_fingerprint:
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    geometry_class: [internal]
+    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_family: [shape]
+    objectives: [pressure-loss, uniformity]
+    constraints: [volume]
+    design_variables: [boundary-displacement]
+  support_level: native
+  prerequisites:
+    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "blockMesh with grading for near-wall refinement"
+  steps:
+    - stage: environment
+      description: "Verify adjoint solver availability; note turbulence limitation"
+    - stage: mesh
+      description: "Generate graded blockMesh with refinement at bend and near walls"
+    - stage: primal
+      description: "Converge primal flow field"
+    - stage: adjoint
+      description: "Compute surface sensitivities for weighted cost function"
+    - stage: morph
+      description: "Morph wall boundaries using sensitivity-weighted displacement"
+    - stage: iterate
+      description: "Loop primal→adjoint→morph until objective change < 1e-4"
+    - stage: validate
+      description: "Compare pressure loss, flow uniformity vs baseline"
+  known_issues:
+    - "Mesh morphing may produce negative volumes in tight bends"
+    - "Foundation solver is laminar-only; results less accurate for turbulent Re"
+    - "Curvature regularization may be needed for manufacturable shapes"
+  references:
+    - "Giannakoglou et al. (2006) - Adjoint methods for duct shape optimization"
+    - "OpenFOAM tutorial: incompressible/adjointShapeOptimizationFoam/pitzDaily"
