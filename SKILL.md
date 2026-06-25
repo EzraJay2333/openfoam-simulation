@@ -82,7 +82,7 @@ Record this in the simulation specification under `environment.of_identity`.
 Use `references/intake-schema.md` to collect a complete normalized simulation specification. The schema covers:
 
 - Environment and execution target
-- Geometry and coordinate system
+- Geometry and coordinate system — **choice between CAD model upload or text description** (see below)
 - Fluid/solid properties with units and temperature dependence
 - Flow regime estimates and characteristic scales
 - Boundary and initial conditions
@@ -95,11 +95,27 @@ Use `references/intake-schema.md` to collect a complete normalized simulation sp
 - Requested results and visualization/export formats
 - Assumptions, unresolved risks, and source provenance
 
+**Geometry intake — two paths:**
+
+| User has... | Action |
+|------------|--------|
+| CAD model file (.stp, .stl, .obj, etc.) | Launch `scripts/model-viewer/` for interactive 3D face selection and BC assignment. Read `references/model-import.md` for the full workflow. |
+| No CAD file / text description only | Collect geometry via structured questions (dimensions, features, BC locations). Skip model-viewer. |
+
+**If launching model-viewer:**
+1. Check dependencies: `python3 -c "import trimesh, fastapi, uvicorn"`
+2. Start server: `cd scripts/model-viewer && python app.py --port 8765 --no-browser`
+3. Tell user to open `http://127.0.0.1:8765` in their browser
+4. User uploads model → selects faces → assigns BC types → exports `face_selections.json`
+5. Read the exported JSON and populate intake-schema geometry + boundary_conditions sections
+6. Stop the server when done
+
 **Interaction rules:**
 - Ask only for decision-critical information the user has not already supplied
 - Infer defaults from geometry and regime estimates when safe, but label them as assumptions
 - Distinguish SI from other unit systems explicitly
 - Present a concise simulation contract for user confirmation before proceeding when assumptions materially affect physics, cost, geometry, or optimisation objectives
+- When the user provides a CAD file, prefer interactive BC selection over guessing boundary locations from text description
 
 ## Step 4: Documentation Gate
 
@@ -288,6 +304,7 @@ Every completed run must produce:
 | File | When to Read |
 |------|-------------|
 | `references/intake-schema.md` | Step 3 — every structured intake |
+| `references/model-import.md` | Step 3 — when user has a CAD model file (STP/STL/OBJ) |
 | `references/documentation-policy.md` | Step 4 — before consulting any documentation |
 | `references/solver-selection.md` | Step 6 — before proposing any solver |
 | `references/solver-compilation.md` | Step 7 — solver source decision (binary vs compile vs custom) |

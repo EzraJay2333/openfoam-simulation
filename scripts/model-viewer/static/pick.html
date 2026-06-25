@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面选择器</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117; color: #e6edf3;
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; user-select: none;
+  }
+  #topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; background: #161b22;
+    border-bottom: 1px solid #30363d;
+    z-index: 20; flex-shrink: 0;
+  }
+  #topbar .prompt { flex:1; font-size:15px; font-weight:500; color:#58a6ff; }
+  #topbar .hint { font-size:11px; color:#8b949e; }
+  #selected-badge {
+    font-size:13px; padding:4px 12px; border-radius:6px;
+    background:rgba(63,185,80,0.15); color:#3fb950;
+    border:1px solid rgba(63,185,80,0.3);
+    display:none; white-space:nowrap;
+  }
+  #selected-badge.show { display:inline-block; }
+  button {
+    padding:8px 18px; border-radius:6px; border:none;
+    font-size:14px; font-weight:600; cursor:pointer; transition:all 0.15s;
+  }
+  #btn-confirm { background:#3fb950; color:#000; }
+  #btn-confirm:hover { background:#35a044; }
+  #btn-confirm:disabled { background:#1a3d22; color:#555; cursor:default; }
+  #btn-clear { background:#30363d; color:#e6edf3; }
+  #btn-clear:hover { background:#484f58; }
+  #btn-cancel { background:#21262d; color:#8b949e; border:1px solid #30363d; }
+  #btn-cancel:hover { background:#30363d; color:#e6edf3; }
+
+  #viewer {
+    flex:1; position:relative;
+    background:radial-gradient(ellipse at center, #1a1f35 0%, #0a0d14 100%);
+  }
+  #tooltip {
+    position:absolute; pointer-events:none; z-index:10;
+    background:rgba(22,27,34,0.95); border:1px solid #30363d;
+    border-radius:6px; padding:8px 14px; font-size:13px;
+    display:none; white-space:nowrap;
+  }
+  #loading {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    text-align:center; z-index:30; color:#8b949e;
+  }
+  .spinner {
+    width:30px; height:30px; border:3px solid #30363d;
+    border-top-color:#58a6ff; border-radius:50%;
+    animation:spin 0.7s linear infinite; margin:0 auto 12px;
+  }
+  @keyframes spin { to{transform:rotate(360deg);} }
+  .view-hint {
+    position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+    font-size:12px; color:rgba(139,148,158,0.55); pointer-events:none;
+    text-align:center; line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="prompt" id="prompt-text">请点击面进行选择</span>
+  <span id="selected-badge">已选: <strong id="sel-count">0</strong> 个面</span>
+  <span class="hint">🖱 点击=切换 · 拖拽=旋转 · 滚轮=缩放</span>
+  <button id="btn-clear" onclick="clearAll()">清除</button>
+  <button id="btn-confirm" onclick="confirmPick()" disabled>确认</button>
+  <button id="btn-cancel" onclick="doCancel()">取消</button>
+</div>
+
+<div id="viewer">
+  <div id="tooltip"></div>
+  <div id="loading"><div class="spinner"></div>加载模型中...</div>
+  <div class="view-hint">点击面 → 选中/取消选中 · 多选<br>拖拽旋转 · 滚轮缩放 · 右键平移<br>选好后点击确认</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// Params
+const params = new URLSearchParams(window.location.search);
+const PICK_ID = params.get('pick_id');
+const MODEL_ID = params.get('model_id');
+const LABEL = params.get('label') || '请点击选择面';
+if (!PICK_ID || !MODEL_ID) throw new Error('Missing params');
+document.getElementById('prompt-text').textContent = LABEL;
+document.title = LABEL;
+
+// State
+const selectedFaces = new Set();
+let modelMeshes = [];       // all model meshes (may be multiple sub-meshes)
+let faceGroups = [];        // from API
+let fgMap = null;           // face group map loaded from JSON: Int32Array[triangleIndex] = groupId
+let highlightGroup = null;  // group for highlight overlays
+
+// Three.js
+const container = document.getElementById('viewer');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1f35);
+scene.fog = new THREE.Fog(0x1a1f35, 10, 80);
+
+const camera = new THREE.PerspectiveCamera(45, 2, 0.01, 200);
+camera.position.set(5, 3, 5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+container.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x445566, 2));
+const dl = new THREE.DirectionalLight(0xffeedd, 4); dl.position.set(8,12,8); scene.add(dl);
+scene.add(new THREE.DirectionalLight(0x8899cc, 1.5)).position.set(-3,2,-4);
+scene.add(new THREE.DirectionalLight(0xffffff, 1)).position.set(0,-1,5);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:0.25}));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+scene.add(new THREE.PolarGridHelper(8, 32, 24, 64, 0x334466, 0x223355));
+
+const modelGroup = new THREE.Group(); scene.add(modelGroup);
+highlightGroup = new THREE.Group(); scene.add(highlightGroup);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 0.01; controls.maxDistance = 100; controls.zoomSpeed = 1.5;
+controls.update();
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function resize() {
+  const r = container.getBoundingClientRect();
+  renderer.setSize(r.width, r.height);
+  camera.aspect = r.width / Math.max(1, r.height);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── Load model + face group map ──
+async function init() {
+  try {
+    // Fetch face groups metadata
+    const infoResp = await fetch(`/api/model/${MODEL_ID}`);
+    const info = await infoResp.json();
+    faceGroups = info.face_groups || [];
+
+    // Load face group map JSON
+    const fgMapResp = await fetch(`/static/${MODEL_ID}_fgmap.json`);
+    const fgMapData = await fgMapResp.json();
+    fgMap = new Int32Array(fgMapData.map);
+
+    console.log(`Face group map: ${fgMap.length} triangles, ${fgMapData.group_count} groups`);
+
+    // Load GLB
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync(`/static/${MODEL_ID}.glb`);
+
+    let totalTris = 0;
+
+    gltf.scene.traverse((child) => {
+      if (child.isMesh && child.geometry) {
+        const geom = child.geometry;
+        geom.applyMatrix4(child.matrixWorld);
+        if (!geom.getAttribute('normal')) geom.computeVertexNormals();
+
+        const hasColor = geom.getAttribute('color') !== undefined;
+        const mat = new THREE.MeshStandardMaterial({
+          vertexColors: hasColor,
+          color: hasColor ? 0xffffff : 0x8899aa,
+          roughness: 0.5, metalness: 0.08,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true; mesh.receiveShadow = true;
+        const fc = geom.index ? geom.index.count/3 : geom.getAttribute('position').count/3;
+        mesh.userData = { triStart: totalTris, triCount: fc };
+        totalTris += fc;
+        modelGroup.add(mesh);
+        modelMeshes.push(mesh);
+      }
+    });
+
+    if (modelMeshes.length === 0) throw new Error('No geometry');
+
+    // Center camera
+    const box = new THREE.Box3();
+    modelMeshes.forEach(m => box.expandByObject(m));
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    ground.position.copy(center); ground.position.y = box.min.y - 0.02;
+    ground.scale.set(maxDim*1.5, maxDim*1.5, 1);
+    const dist = maxDim * 2;
+    camera.position.set(center.x+dist*0.7, center.y+dist*0.5, center.z+dist*0.7);
+    controls.target.copy(center); controls.update();
+
+    document.getElementById('loading').style.display = 'none';
+    console.log(`Loaded: ${modelMeshes.length} meshes, ${totalTris} triangles, ${faceGroups.length} groups`);
+  } catch (err) {
+    document.getElementById('loading').innerHTML = `<div style="color:#f85149;">Error: ${err.message}</div>`;
+    console.error(err);
+  }
+}
+
+// ── Get face group from a raycaster intersection ──
+function getFaceGroupFromIntersect(intersect) {
+  const faceIndex = intersect.faceIndex;
+  const obj = intersect.object;
+  if (!obj.userData || obj.userData.triStart === undefined) return null;
+  const globalTriIdx = obj.userData.triStart + faceIndex;
+  if (!fgMap || globalTriIdx >= fgMap.length) return null;
+  return fgMap[globalTriIdx];
+}
+
+// ── Mouse ──
+container.addEventListener('mousemove', onMouseMove);
+container.addEventListener('click', onMouseClick);
+
+function onMouseMove(event) {
+  const rect = container.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(modelMeshes, false);
+  const tooltip = document.getElementById('tooltip');
+
+  if (intersects.length > 0) {
+    const fgId = getFaceGroupFromIntersect(intersects[0]);
+    if (fgId !== null) {
+      const fg = faceGroups.find(f => f.face_id === fgId);
+      if (fg) {
+        const sel = selectedFaces.has(fgId) ? ' [已选中]' : '';
+        tooltip.style.display = 'block';
+        tooltip.style.left = (event.clientX - rect.left + 16) + 'px';
+        tooltip.style.top = (event.clientY - rect.top - 36) + 'px';
+        tooltip.textContent = `面 #${fgId} | ${fg.area.toFixed(4)} m2 | ${fg.face_type}${sel}`;
+        return;
+      }
+    }
+  }
+  tooltip.style.display = 'none';
+}
+
+function onMouseClick(event) {
+  const rect = container.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(modelMeshes, false);
+  if (intersects.length > 0) {
+    const fgId = getFaceGroupFromIntersect(intersects[0]);
+    if (fgId !== null) toggleFace(fgId);
+  }
+}
+
+// ── Toggle ──
+function toggleFace(fgId) {
+  if (selectedFaces.has(fgId)) selectedFaces.delete(fgId);
+  else selectedFaces.add(fgId);
+  applyHighlights();
+  updateUI();
+}
+
+function clearAll() {
+  selectedFaces.clear();
+  applyHighlights();
+  updateUI();
+}
+
+function updateUI() {
+  const n = selectedFaces.size;
+  const badge = document.getElementById('selected-badge');
+  const countEl = document.getElementById('sel-count');
+  const btnConfirm = document.getElementById('btn-confirm');
+  if (n > 0) { badge.classList.add('show'); countEl.textContent = n; btnConfirm.disabled = false; }
+  else { badge.classList.remove('show'); btnConfirm.disabled = true; }
+}
+
+// ── Highlight: modify vertex colors directly (sub-meshes = dedicated vertices, no bleeding) ──
+function applyHighlights() {
+  for (const mesh of modelMeshes) {
+    const geom = mesh.geometry;
+    const colorAttr = geom.getAttribute('color');
+    if (!colorAttr) continue;
+
+    // Save originals once
+    if (!geom.userData.origColors) {
+      geom.userData.origColors = new Float32Array(colorAttr.array);
+    }
+    // Restore originals
+    colorAttr.array.set(geom.userData.origColors);
+
+    const triStart = mesh.userData.triStart || 0;
+    const triCount = mesh.userData.triCount || 0;
+    const indexAttr = geom.index;
+
+    for (let i = 0; i < triCount; i++) {
+      const globalIdx = triStart + i;
+      if (globalIdx >= fgMap.length || !selectedFaces.has(fgMap[globalIdx])) continue;
+
+      const i0 = indexAttr ? indexAttr.getX(i*3) : i*3;
+      const i1 = indexAttr ? indexAttr.getX(i*3+1) : i*3+1;
+      const i2 = indexAttr ? indexAttr.getX(i*3+2) : i*3+2;
+
+      for (const vi of [i0, i1, i2]) {
+        // Blend: keep 30% original, 70% green highlight
+        colorAttr.setXYZ(vi,
+          colorAttr.getX(vi) * 0.3,
+          colorAttr.getY(vi) * 0.3 + 0.7,
+          colorAttr.getZ(vi) * 0.3
+        );
+      }
+    }
+    colorAttr.needsUpdate = true;
+  }
+}
+
+function disposeHighlightGroup() {
+  // No-op: we modify vertex colors on the original mesh now
+}
+
+// ── Confirm / Cancel ──
+async function confirmPick() {
+  if (selectedFaces.size === 0) return;
+  const faces = [];
+  for (const fgId of selectedFaces) {
+    const fg = faceGroups.find(f => f.face_id === fgId);
+    if (!fg) continue;
+    faces.push({ face_id: fgId, face_data: {
+      area: fg.area, centroid: fg.centroid, normal: fg.normal,
+      face_type: fg.face_type, triangle_count: fg.triangle_count,
+    }});
+  }
+  try {
+    await fetch('/api/pick-result', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ pick_id: PICK_ID, faces }),
+    });
+    setTimeout(() => window.close(), 400);
+  } catch(err) { alert('Error: '+err.message); }
+}
+
+function doCancel() {
+  fetch('/api/pick-result', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ pick_id: PICK_ID, faces: [] }),
+  }).finally(() => window.close());
+}
+
+window.confirmPick = confirmPick;
+window.clearAll = clearAll;
+window.doCancel = doCancel;
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && selectedFaces.size > 0) confirmPick();
+  if (e.key === 'Escape') doCancel();
+});
+
+init();
+</script>
+</body>
+</html>

@@ -27,8 +27,34 @@ environment:
 
 ### 2. Geometry and Coordinate System
 
+Two mutually exclusive paths:
+
+**Path A: CAD model file (preferred when available)**
+
 ```yaml
 geometry:
+  source: "cad_model"
+  model_file: "/path/to/model.stp"       # original CAD file
+  surface_file: "/path/to/model.stl"     # exported STL for snappyHexMesh
+  bc_selections_file: "/path/to/face_selections.json"  # from model-viewer export
+  model_viewer_url: "http://127.0.0.1:8765"
+  coordinate_system:
+    origin: [0.0, 0.0, 0.0]
+    units: "m"
+    gravity_vector: [0.0, -9.81, 0.0]
+  dimensions:
+    type: "3d"
+    bounding_box: [auto-detected from model]
+  features: []  # populated from face_selections.json
+```
+
+For Path A, launch `scripts/model-viewer/` per `references/model-import.md`. The user uploads the model, selects faces in 3D, assigns BC types, and exports `face_selections.json`. The exported face-to-BC mapping auto-populates the boundary_conditions section (Section 5).
+
+**Path B: Text description (when no CAD file)**
+
+```yaml
+geometry:
+  source: "text_description"
   description: "2D axisymmetric pipe with 90° bend"
   coordinate_system:
     origin: [0.0, 0.0, 0.0]
