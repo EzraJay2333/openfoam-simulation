@@ -3,25 +3,49 @@
 [![English](https://img.shields.io/badge/lang-English-blue)](README.md)
 [![简体中文](https://img.shields.io/badge/lang-简体中文-red)](README_CN.md)
 
-为 Claude Code 打造的 12 步 OpenFOAM 流体仿真技能 —— 在 Linux/WSL 上规划、搭建、运行、验证和记录 CFD 仿真。专注于流体拓扑/形状优化，内置自学习知识库。
+为 Claude Code、Codex、Gemini CLI、Copilot、Cursor 打造的 12 步 OpenFOAM 流体仿真技能 —— 在 Linux/WSL 上规划、搭建、运行、验证和记录 CFD 仿真。专注于流体拓扑/形状优化，内置自学习知识库。
 
 ## 快速安装
 
-### 方式 A：下载 .skill 文件
+适用于：**Claude Code** · **Codex (OpenAI)** · **Gemini CLI** · **GitHub Copilot** · **Cursor** · 任何支持 Skills 协议的智能体。
 
-1. 从 [Releases](https://github.com/EzraJay2333/openfoam-simulation/releases/latest/download/openfoam-simulation.skill) 下载 `openfoam-simulation.skill`
-2. 在 Claude Code 中，将文件拖入聊天窗口，或运行：
-   ```
-   /install-skill openfoam-simulation.skill
-   ```
+### 通用方式：Git 克隆
 
-### 方式 B：Git 克隆
+选择你的智能体和操作系统，复制命令：
 
+| 智能体 | Linux / macOS | Windows (PowerShell) |
+|-------|--------------|---------------------|
+| **Claude Code** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.claude/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.claude\skills\openfoam-simulation` |
+| **Codex (OpenAI)** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.codex/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.codex\skills\openfoam-simulation` |
+| **Gemini CLI** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.gemini/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.gemini\skills\openfoam-simulation` |
+| **GitHub Copilot** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.copilot/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.copilot\skills\openfoam-simulation` |
+| **Cursor** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor\skills\openfoam-simulation` |
+| **手动（任意智能体）** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ./openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .\openfoam-simulation` |
+
+克隆后重启智能体即可生效，无需额外配置。
+
+**💡 一行搞定（Linux/macOS/WSL）：**
 ```bash
-git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.claude/skills/openfoam-simulation
+SKILL_DIR="${HOME}/.claude/skills"   # 换成你的智能体路径
+git clone https://github.com/EzraJay2333/openfoam-simulation.git "$SKILL_DIR/openfoam-simulation"
 ```
 
-重启 Claude Code 后技能自动激活。无需额外配置。
+### 方式 B：.skill 文件（拖拽安装）
+
+1. 下载 [`openfoam-simulation.skill`](https://github.com/EzraJay2333/openfoam-simulation/releases/latest/download/openfoam-simulation.skill)
+2. 拖入智能体聊天窗口，或运行安装命令：
+   - **Claude Code**: `/install-skill openfoam-simulation.skill`
+   - **Codex**: `/skill install openfoam-simulation.skill`
+   - **Gemini CLI**: `gemini skill install openfoam-simulation.skill`
+   - **Copilot**: `copilot skill install openfoam-simulation.skill`
+
+### 保持更新
+
+```bash
+cd <你的技能目录>/openfoam-simulation && git pull
+```
+
+一行命令升级到最新版，无需重新下载安装。
 
 ## 环境要求
 

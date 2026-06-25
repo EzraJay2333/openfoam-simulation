@@ -7,21 +7,45 @@
 
 ## Quick Install
 
-### Option A: Download .skill File
+Works with: **Claude Code** · **Codex (OpenAI)** · **Gemini CLI** · **GitHub Copilot** · **Cursor** · any agent that supports the Skills protocol.
 
-1. Download [`openfoam-simulation.skill`](https://github.com/EzraJay2333/openfoam-simulation/releases/latest/download/openfoam-simulation.skill) from Releases
-2. In Claude Code, drag the file into the chat or run:
-   ```
-   /install-skill openfoam-simulation.skill
-   ```
+### Universal: Git Clone
 
-### Option B: Git Clone
+Pick your agent and OS, then run the command:
 
+| Agent | Linux / macOS | Windows (PowerShell) |
+|-------|--------------|---------------------|
+| **Claude Code** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.claude/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.claude\skills\openfoam-simulation` |
+| **Codex (OpenAI)** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.codex/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.codex\skills\openfoam-simulation` |
+| **Gemini CLI** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.gemini/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.gemini\skills\openfoam-simulation` |
+| **GitHub Copilot** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.copilot/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git $env:USERPROFILE\.copilot\skills\openfoam-simulation` |
+| **Cursor** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor\skills\openfoam-simulation` |
+| **Manual (any agent)** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ./openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .\openfoam-simulation` |
+
+Restart your agent after cloning. No additional setup required.
+
+**💡 Tip — one-liner for any agent on Linux/macOS/WSL:**
 ```bash
-git clone https://github.com/EzraJay2333/openfoam-simulation.git ~/.claude/skills/openfoam-simulation
+SKILL_DIR="${HOME}/.claude/skills"   # change to your agent's path
+git clone https://github.com/EzraJay2333/openfoam-simulation.git "$SKILL_DIR/openfoam-simulation"
 ```
 
-The skill activates on next Claude Code restart. No additional setup required.
+### Option B: .skill File (Drag & Drop)
+
+1. Download [`openfoam-simulation.skill`](https://github.com/EzraJay2333/openfoam-simulation/releases/latest/download/openfoam-simulation.skill)
+2. Drag the file into your agent's chat window, or run the install command:
+   - **Claude Code**: `/install-skill openfoam-simulation.skill`
+   - **Codex**: `/skill install openfoam-simulation.skill`
+   - **Gemini CLI**: `gemini skill install openfoam-simulation.skill`
+   - **Copilot**: `copilot skill install openfoam-simulation.skill`
+
+### Stay Updated
+
+```bash
+cd <your-skills-dir>/openfoam-simulation && git pull
+```
+
+No reinstalling, no re-downloading. Git handles everything.
 
 ## Requirements
 
