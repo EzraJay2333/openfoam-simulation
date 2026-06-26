@@ -120,6 +120,36 @@ class StepModel:
                              f"Windows: pip install cascadio\n"
                              f"Linux/WSL: pip install gmsh (or: sudo apt install gmsh)")
 
+        # Post-processing: validate and convert Scene to Trimesh
+        if self._mesh is None:
+            raise ValueError(f"Failed to load mesh from {self.file_path}")
+        if isinstance(self._mesh, trimesh.Scene) and len(self._mesh.geometry) == 0:
+            raise ValueError(f"Empty scene in {self.file_path}")
+        if hasattr(self._mesh, "faces") and len(self._mesh.faces) == 0:
+            raise ValueError(f"No faces found in {self.file_path}")
+
+        if isinstance(self._mesh, trimesh.Scene):
+            meshes = []
+            for name, geom in self._mesh.geometry.items():
+                if hasattr(geom, "faces") and len(geom.faces) > 0:
+                    meshes.append(geom)
+            if not meshes:
+                raise ValueError("No mesh geometry found in scene")
+            self._mesh = trimesh.util.concatenate(meshes)
+            print(f"  Combined {len(meshes)} geometries into single mesh")
+
+        print(f"  Loaded mesh: {len(self._mesh.vertices)} vertices, "
+              f"{len(self._mesh.faces)} faces")
+
+        # Merge close vertices
+        self._mesh.merge_vertices()
+
+        # Compute face normals
+        self._mesh.face_normals
+
+        # Group faces
+        self._group_faces()
+
     def _load_step(self):
         """Load STEP file, trying cascadio then gmsh then OCP."""
         # Try cascadio (Windows)
@@ -152,37 +182,6 @@ class StepModel:
             "  Linux/WSL: pip install gmsh\n"
             "  Alternative: pip install cadquery"
         )
-
-        if self._mesh is None:
-            raise ValueError(f"Failed to load mesh from {self.file_path}")
-        if isinstance(self._mesh, trimesh.Scene) and len(self._mesh.geometry) == 0:
-            raise ValueError(f"Empty scene in {self.file_path}")
-        if hasattr(self._mesh, "faces") and len(self._mesh.faces) == 0:
-            raise ValueError(f"No faces found in {self.file_path}")
-
-        # Ensure single mesh
-        if isinstance(self._mesh, trimesh.Scene):
-            # Combine all geometries
-            meshes = []
-            for name, geom in self._mesh.geometry.items():
-                if hasattr(geom, "faces") and len(geom.faces) > 0:
-                    meshes.append(geom)
-            if not meshes:
-                raise ValueError("No mesh geometry found in scene")
-            self._mesh = trimesh.util.concatenate(meshes)
-            print(f"  Combined {len(meshes)} geometries into single mesh")
-
-        print(f"  Loaded mesh: {len(self._mesh.vertices)} vertices, "
-              f"{len(self._mesh.faces)} faces")
-
-        # Merge close vertices
-        self._mesh.merge_vertices()
-
-        # Compute face normals
-        self._mesh.face_normals
-
-        # Group faces
-        self._group_faces()
 
     def _group_faces(self):
         """Group triangle faces into logical CAD faces by normal + adjacency."""

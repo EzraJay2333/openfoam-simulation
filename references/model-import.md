@@ -9,99 +9,134 @@ When the user has a CAD model file (STEP, STL, OBJ, etc.), use the integrated 3D
 
 This replaces or supplements the text-based geometry description in Step 3 (Structured Intake).
 
+## Two Interaction Modes
+
+### Mode A: Agent-Driven Pick (Recommended)
+
+The agent calls `pick_face()` to pop up a targeted selection window for each boundary type:
+
+```python
+# Agent calls this for each boundary:
+from pick_face import pick_face
+
+# 1. Ask user to pick inlet faces
+inlet = pick_face("model.stp", label="请点击选择【入口面】(Inlet)")
+
+# 2. Ask user to pick outlet faces
+outlet = pick_face("model.stp", label="请点击选择【出口面】(Outlet)")
+
+# 3. Ask user to pick wall faces
+walls = pick_face("model.stp", label="请点击选择【壁面】(Wall)")
+```
+
+Each call:
+1. Opens a full-screen 3D picker in the browser
+2. User multi-selects faces by clicking (toggle on/off)
+3. User clicks "确认" (Confirm) to submit, or "取消" (Cancel) to skip
+4. Window closes → `pick_face()` returns the structured face data
+5. Agent processes the result and moves to the next boundary
+
+Return format:
+```json
+{
+  "model_id": "abc123",
+  "file_name": "model.step",
+  "count": 3,
+  "faces": [
+    {
+      "face_id": 0,
+      "area": 0.0025,
+      "centroid": [0.1, 0.2, 0.3],
+      "normal": [0.0, 0.0, 1.0],
+      "face_type": "planar",
+      "triangle_count": 128
+    }
+  ]
+}
+```
+
+### Mode B: Full Viewer (Self-Service)
+
+User opens the complete viewer at `http://127.0.0.1:8765` to explore the model and assign all BCs in one session:
+
+1. Upload model via drag-and-drop
+2. Explore in 3D (rotate/zoom/pan)
+3. Click faces to select; right panel to assign BC types
+4. Export JSON configuration when done
+
+Use this when the user wants to assign all boundaries at once without agent prompting.
+
 ## Supported Formats
 
 | Format | Extension | Notes |
 |--------|----------|-------|
 | STEP | `.stp`, `.step` | Best for CAD — preserves face groups from original CAD faces |
-| STL | `.stl` | Triangle mesh — faces are grouped by normal clustering |
+| STL | `.stl` | Triangle mesh — faces grouped by normal+adjacency clustering |
 | OBJ | `.obj` | Wavefront — supports multiple objects |
-| GLTF/GLB | `.gltf`, `.glb` | Modern 3D format |
+| GLTF/GLB | `.glb`, `.gltf` | Modern 3D format |
 | PLY | `.ply` | Stanford format |
-| 3MF | `.3mf` | 3D Manufacturing Format |
-| DAE | `.dae` | COLLADA |
 
-## When to Use
+## Dependencies
 
-Enter this workflow when:
-- User says "I have an STL/STEP/STP file", "here's my model", "import this geometry"
-- User drags or shares a CAD file path
-- User wants to visually assign boundary conditions on the geometry
+### Windows
+```bash
+pip install trimesh fastapi uvicorn numpy cascadio
+```
+
+### Linux / WSL
+```bash
+sudo apt install gmsh python3-pip
+pip install trimesh fastapi uvicorn numpy gmsh
+```
+
+### Verify
+```bash
+python -c "import trimesh, fastapi, uvicorn; print('OK')"
+```
 
 ## How to Launch
 
-### Step 1: Check Dependencies
-
-```bash
-# Check required Python packages
-python3 -c "import trimesh, fastapi, uvicorn; print('OK')" 2>&1
-
-# If missing, install:
-pip install trimesh fastapi uvicorn gradio numpy
-```
-
-For STEP file support on **Windows**: `pip install cascadio` (auto-selected by trimesh)
-For STEP file support on **Linux/WSL**: `pip install gmsh` or `sudo apt install gmsh`
-
-### Step 2: Start the Server
+### Step 1: Start the Server (if not running)
 
 ```bash
 cd <skill-path>/scripts/model-viewer
 python app.py --port 8765 --no-browser
 ```
 
-**Important notes:**
-- The server runs on `http://127.0.0.1:8765` by default
-- Use `--no-browser` when running in a terminal-only environment — tell the user to open the URL in their browser
-- The server stays running until the user closes it
-- The `--port` flag changes the port if 8765 is occupied
+The server auto-detects if already running and reuses it.
 
-### Step 3: User Interacts with the 3D Viewer
+### Step 2: Agent Opens Pick Windows
 
-Guide the user through these steps:
+For each boundary type needed, call `pick_face()` from `pick_face.py`:
 
-1. **Open browser** at `http://127.0.0.1:8765`
-2. **Upload model** — drag & drop the CAD file onto the page, or click "选择文件"
-3. **Explore model** — rotate (left-drag), zoom (scroll), pan (right-drag)
-4. **Select faces** — click a face to select it (highlighted in color)
-   - `Shift + Click` to add/remove faces from selection
-   - Hover over a face to see its area and normal vector
-5. **Assign boundary type** — click one of the BC buttons:
-   - 🔵 **Inlet** (入口) — flow inlet faces
-   - 🔴 **Outlet** (出口) — flow outlet faces
-   - ⚪ **Wall** (壁面) — solid wall faces
-   - 🟠 **Heat Source** (热源) — faces with heat flux
-   - 🟢 **Symmetry** (对称面) — symmetry planes
-   - 🟡 **Open** (开放边界) — far-field open boundary
-6. **Export** — click "导出配置" to download `face_selections.json`
+```python
+from pick_face import pick_face
 
-### Step 4: Read the Export
+# Inlet
+inlet_faces = pick_face(model_path, label="请点击选择【入口面】— 流体进入的面")
 
-After the user exports, the JSON file contains:
+# Outlet
+outlet_faces = pick_face(model_path, label="请点击选择【出口面】— 流体流出的面")
 
-```json
-{
-  "file_name": "heat_sink.step",
-  "total_faces": 24,
-  "face_groups": [
-    {
-      "id": 0,
-      "area_m2": 0.0025,
-      "normal": [0.0, 0.0, 1.0],
-      "type": "planar",
-      "triangle_count": 128
-    }
-  ],
-  "bc_selections": {
-    "0": {"label": "inlet", "type": "inlet", "color": "#4488ff"},
-    "1": {"label": "outlet", "type": "outlet", "color": "#ff4444"},
-    "5": {"label": "heat_source", "type": "heat_source", "color": "#ff8800"}
-  },
-  "unassigned": ["2", "3", "4", "6"]
-}
+# Walls (optional — remaining unassigned faces default to wall)
+wall_faces = pick_face(model_path, label="请点击选择【壁面】— 固定固体壁面")
 ```
 
-### Step 5: Convert to OpenFOAM Boundary Conditions
+Each call blocks until the user confirms or cancels (5-minute timeout).
+
+If user cancels (clicks "取消" or presses Esc), the function returns `{"count": 0, "faces": []}`.
+
+### Step 3: User Interaction
+
+The pick window shows:
+- Full-screen 3D view with the model
+- Top bar with the prompt (e.g., "请点击选择【入口面】")
+- Click any face to select (green highlight), click again to deselect
+- Hover shows face ID, area, and face type
+- "清除" clears all selections; "确认" submits; "取消" closes
+- Keyboard: Enter = confirm, Esc = cancel
+
+### Step 4: Convert to OpenFOAM Boundary Conditions
 
 Map the exported selections to OpenFOAM patch types:
 
@@ -114,33 +149,34 @@ Map the exported selections to OpenFOAM patch types:
 | `symmetry` | `symmetryPlane` or `symmetry` | All: `symmetryPlane` |
 | `open` | `patch` | U: `inletOutlet` or `pressureInletOutletVelocity`, p: `totalPressure` |
 
-For faces not assigned a BC type, ask the user — these cannot default to any specific type.
+For faces not assigned a BC type, ask the user — these cannot default to any specific type. Common default: unassigned external faces → `wall`.
 
 ## Integration with Geometry Intake
 
-After the interactive session, populate the intake-schema geometry section:
+After interactive selection, populate the intake-schema geometry section:
 
 ```yaml
 geometry:
   source: "cad_model"
   model_file: "heat_sink.step"
-  bc_selections_file: "face_selections.json"
-  model_viewer_url: "http://127.0.0.1:8765"
-  boundary_conditions:  # auto-populated from face_selections.json
-    - patch: "face_group_0"
-      area: 0.0025
-      normal: [0.0, 0.0, 1.0]
-      bc_type: "inlet"
-      openfoam_patch: "patch"
-    - patch: "face_group_1"
-      area: 0.0025
-      normal: [0.0, 0.0, -1.0]
-      bc_type: "outlet"
-      openfoam_patch: "patch"
-  unassigned_warning: "Faces 2,3,4,6 need BC type assignment"
+  bc_selections:
+    inlet:
+      - face_id: 0
+        area_m2: 0.0025
+        normal: [0.0, 0.0, 1.0]
+        centroid: [0.1, 0.2, 0.0]
+    outlet:
+      - face_id: 3
+        area_m2: 0.0018
+        normal: [0.0, 0.0, -1.0]
+    walls:
+      - face_id: 1
+      - face_id: 2
+      - face_id: 4
+  unassigned: []
   mesh_strategy:
-    generator: "snappyHexMesh"  # snappyHexMesh is the default for STL/STP input
-    surface_file: "heat_sink.stl"  # exported from the model
+    generator: "snappyHexMesh"
+    surface_file: "heat_sink.stl"
 ```
 
 ## Going Back to Text Description
@@ -154,9 +190,11 @@ If the user can't or doesn't want to use the interactive tool:
 
 | Issue | Solution |
 |-------|---------|
-| STEP file fails to load | Try converting to STL first (use FreeCAD or online converter). STL is more universally supported. |
+| STEP file fails to load | Install cascadio (Windows) or gmsh (Linux/WSL): `pip install gmsh` |
 | "No module named 'trimesh'" | `pip install trimesh` |
-| Port already in use | `python app.py --port 8766` (try another port) |
-| No faces detected | Mesh may be too coarse or non-manifold. Try `python app.py --gradio` for a simpler interface. |
-| Server doesn't start on Windows | Use `python app.py` directly (not `python3`). Windows Python is `python`. |
-| Can't open browser in WSL | Use `--no-browser`, then open the URL in your Windows browser manually. WSL servers are accessible at `http://localhost:8765`. |
+| Port already in use | Server auto-reuses existing instance. Or: `python app.py --port 8766` |
+| No faces detected | Mesh may be too coarse or non-manifold. Try `app.py --gradio` for simpler interface |
+| Browser doesn't open in WSL | The script uses `webbrowser.open()`. If it fails, manually open `http://localhost:8765` |
+| Pick window shows wrong model | Ensure the model was uploaded/parsed before calling `pick_face()`. The model ID must match. |
+| Pick result is empty (count=0) | User clicked "取消". Re-open the picker with a clearer prompt. |
+| Highlight looks wrong | Refresh the page. The face-group map (fgmap) must match the GLB. Re-upload if needed. |

@@ -99,23 +99,50 @@ Use `references/intake-schema.md` to collect a complete normalized simulation sp
 
 | User has... | Action |
 |------------|--------|
-| CAD model file (.stp, .stl, .obj, etc.) | Launch `scripts/model-viewer/` for interactive 3D face selection and BC assignment. Read `references/model-import.md` for the full workflow. |
+| CAD model file (.stp, .stl, .obj, etc.) | Call `pick_face()` from `scripts/model-viewer/pick_face.py` to pop up an interactive 3D face picker for each boundary type. Read `references/model-import.md` for the full workflow. |
 | No CAD file / text description only | Collect geometry via structured questions (dimensions, features, BC locations). Skip model-viewer. |
 
-**If launching model-viewer:**
-1. Check dependencies: `python3 -c "import trimesh, fastapi, uvicorn"`
-2. Start server: `cd scripts/model-viewer && python app.py --port 8765 --no-browser`
-3. Tell user to open `http://127.0.0.1:8765` in their browser
-4. User uploads model → selects faces → assigns BC types → exports `face_selections.json`
-5. Read the exported JSON and populate intake-schema geometry + boundary_conditions sections
-6. Stop the server when done
+**If user provides a CAD file — agent-driven pick workflow:**
+
+The agent calls `pick_face()` once per boundary type. Each call auto-parses the model, auto-starts the server (if needed), opens a browser pick window, and blocks until the user confirms.
+
+```python
+import sys; sys.path.insert(0, 'scripts/model-viewer')
+from pick_face import pick_face
+
+# For each boundary type needed, pop up a pick window:
+inlet  = pick_face(model_path, label="请点击选择【入口面】(Inlet)")
+outlet = pick_face(model_path, label="请点击选择【出口面】(Outlet)")
+walls  = pick_face(model_path, label="请点击选择【壁面】(Wall)")
+# ... heat_source, symmetry, open, etc.
+```
+
+**What happens in each call:**
+1. Model file is auto-parsed (STEP/STL/OBJ → face groups)
+2. Server auto-starts on port 8765 (reuses existing if running)
+3. Browser opens with full-screen 3D picker showing the model
+4. User clicks faces to toggle selection (green highlight), multi-select supported
+5. User clicks "确认" → window closes → `pick_face()` returns structured data
+6. User clicks "取消" → window closes → returns `{"count": 0, "faces": []}`
+7. Agent processes the result and proceeds to the next boundary type
+
+**Return format:**
+```json
+{
+  "model_id": "abc123", "file_name": "model.step", "count": 3,
+  "faces": [
+    {"face_id": 0, "area": 0.0025, "centroid": [0,0,0], "normal": [0,0,1], "face_type": "planar"},
+    ...
+  ]
+}
+```
 
 **Interaction rules:**
 - Ask only for decision-critical information the user has not already supplied
 - Infer defaults from geometry and regime estimates when safe, but label them as assumptions
 - Distinguish SI from other unit systems explicitly
 - Present a concise simulation contract for user confirmation before proceeding when assumptions materially affect physics, cost, geometry, or optimisation objectives
-- When the user provides a CAD file, prefer interactive BC selection over guessing boundary locations from text description
+- When the user provides a CAD file, **always** use interactive BC selection via `pick_face()` — never guess boundary locations from text description
 
 ## Step 4: Documentation Gate
 
