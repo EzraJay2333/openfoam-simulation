@@ -1,0 +1,53 @@
+workflow:
+  name: "porous-density-topology"
+  status: validated
+  distribution:
+    - "openfoam.com:2206"  # Only OpenCFD has native support; Foundation requires external optimizer
+  problem_fingerprint:
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal, conjugate-heat-transfer]
+    geometry_class: [internal]
+    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_family: [density-topology]
+    objectives: [pressure-loss, heat-transfer, multi-objective]
+    constraints: [volume]
+    design_variables: [porosity-field]
+  support_level: native
+  prerequisites:
+    - "adjointOptimisationFoam (OpenCFD v2206+)"
+    - "Helmholtz filter PDE solver (built-in)"
+    - "Python 3 with numpy, matplotlib for post-processing"
+  alternative:
+    distribution: "openfoam.org"
+    support_level: external
+    description: "Use porousSimpleFoam + external optimizer (SciPy/pyOpt/DAKOTA)"
+    caveat: "Requires manual gradient computation or finite differences; slower convergence"
+  steps:
+    - stage: environment
+      description: "Verify adjointOptimisationFoam supports porosity design variables (-help)"
+    - stage: mesh
+      description: "Generate uniform blockMesh for full design domain"
+    - stage: initialization
+      description: "Set initial porosity field to all-fluid (α=1)"
+    - stage: case_setup
+      description: "Configure adjointDict with porosity design variables, Brinkman penalty, Helmholtz filter"
+    - stage: smoke_run
+      description: "Few iterations with uniform α to verify setup"
+    - stage: sensitivity_test
+      description: "One adjoint solve to verify sensitivity computation"
+    - stage: optimize
+      description: "Full topology optimisation loop (50-200 design iterations)"
+    - stage: postprocess
+      description: "Extract final α field, velocity field, pressure field; visualize optimized topology"
+    - stage: validate
+      description: "Check volume constraint, objective reduction, binary interface quality"
+  known_issues:
+    - "Gray regions (α≈0.5) persist if Heaviside sharpness is too low"
+    - "Checkerboard patterns if filter radius < 2× cell size"
+    - "Solver instability if permeability approaches zero in solid regions"
+    - "Foundation distribution requires external optimizer — NOT a drop-in replacement"
+  references:
+    - "OpenCFD adjointOptimisationFoam documentation (v2206+)"
+    - "Borrvall & Petersson (2003) - Topology optimization of fluids in Stokes flow"
+    - "Gersborg-Hansen et al. (2005) - Topology optimization of Navier-Stokes flow"
+    - "Papoutsis-Kiachagias & Giannakoglou (2016) - Continuous adjoint for fluid topology optimization"

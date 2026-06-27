@@ -1,0 +1,4 @@
+# Learned workflow records are stored here.
+# Each file is named <problem-fingerprint-slug>.yaml
+# Status: experimental → validated → deprecated
+# This directory is populated by scaffold_learning_record.py (Step 11).

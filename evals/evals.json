@@ -1,0 +1,97 @@
+{
+  "skill_name": "openfoam-simulation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Check if OpenFOAM is installed on this system and tell me what version and distribution it is.",
+      "expected_output": "Skill should execute Steps 1-2: detect environment, identify OpenFOAM distribution family and version, report available solvers. If OpenFOAM is absent, should output diagnostic with install instructions and stop without attempting installation.",
+      "assertions": [
+        "Output identifies distribution family (openfoam.org or openfoam.com)",
+        "Output contains OpenFOAM version number",
+        "Output identifies WSL vs native Linux distinction",
+        "Output lists available adjoint solvers found",
+        "Produces structured JSON environment output",
+        "Uses skill's detection scripts (detect_environment.sh, inspect_openfoam.sh)",
+        "Records MPI availability and flavor"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I have a WSL Ubuntu 22.04 with OpenFOAM installed. I want to optimize a 90-degree pipe bend to minimize pressure loss. The pipe diameter is 25mm, water at 20°C flows at 2 m/s. Help me set up and run the simulation.",
+      "expected_output": "Skill should execute full 11-step state machine: environment gate → OpenFOAM identity → structured intake → documentation gate → classify → solver selection → workflow resolution → case construction → staged execution.",
+      "assertions": [
+        "Identifies problem as internal-flow-pressure-loss shape optimization",
+        "Distinguishes shape vs topology optimization",
+        "Uses documentation gate before selecting solver",
+        "Identifies laminar-only limitation of Foundation adjoint solver",
+        "Produces normalized simulation specification",
+        "Performs staged execution (smoke run before full run)",
+        "Records solver selection rationale with rejected alternatives",
+        "Cites sources for decisions"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I need to do a topology optimization of a heat sink cooling channel. Minimize both pressure drop and max temperature. The domain is 50mm x 20mm x 5mm, aluminum solid, water coolant, heat flux of 10 W/cm² on the bottom. What solver should I use?",
+      "expected_output": "Should identify that adjointOptimisationFoam (OpenCFD v2206+) supports CHT topology optimization. Should NOT recommend Foundation's adjointShapeOptimizationFoam (no CHT, no topology).",
+      "assertions": [
+        "Does NOT recommend Foundation adjointShapeOptimizationFoam for CHT topology optimization",
+        "Identifies capability gap: no native CHT + topology in Foundation",
+        "Distinguishes OpenCFD vs Foundation distribution capabilities",
+        "Cites evidence from installed environment (source code, -help)",
+        "Produces documentation audit trail with source levels",
+        "Records rejected alternatives with reasons",
+        "States distribution/version qualification for recommendation"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "I ran an adjoint shape optimization on my duct using simpleFoam and adjointShapeOptimizationFoam. Can you validate the results? Here's the case directory: /home/user/openfoam/cases/duct_opt",
+      "expected_output": "Should produce a structured validation report covering convergence, conservation, mesh quality, physical plausibility, and reproducibility.",
+      "assertions": [
+        "Checks case directory existence before attempting validation",
+        "Produces structured validation report covering all required sections",
+        "Covers convergence check methodology (residuals, iterations)",
+        "Covers conservation checks (mass, momentum)",
+        "Covers mesh quality thresholds",
+        "Covers physical plausibility checks",
+        "Covers reproducibility records",
+        "Matches problem fingerprint to known template"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "I want to simulate flow in a pipe but I'm not sure what turbulence model to use. The Reynolds number is about 50,000. Help me figure this out.",
+      "expected_output": "Should use documentation gate, classify problem, recommend based on evidence with y+ guidance.",
+      "assertions": [
+        "Cites installed OpenFOAM documentation or help output",
+        "Includes y+ guidance for wall treatment",
+        "Mentions both kEpsilon and kOmegaSST as options",
+        "Records rejected alternatives with reasons",
+        "Produces structured documentation audit trail",
+        "Includes inlet turbulence estimation methodology"
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "I have a case that's diverging. The log shows 'Floating point exception' after 23 iterations of simpleFoam. The case is a 2D channel flow at Re=1000. What should I check?",
+      "expected_output": "Should diagnose following error protocol: check turbulence BCs, relaxation factors, mesh quality, 2D empty patches, initial conditions, suggest laminar first.",
+      "assertions": [
+        "Identifies turbulence BCs as most likely cause for Re=1000 channel FPE",
+        "Suggests checking 2D empty patch setup",
+        "Suggests reducing relaxation factors",
+        "Suggests checking mesh quality",
+        "References skill's error protocol (validation-and-convergence.md)",
+        "Produces structured diagnostic output (machine-readable)",
+        "Suggests running laminar first to isolate issue",
+        "Provides executable diagnostic script"
+      ],
+      "files": []
+    }
+  ]
+}

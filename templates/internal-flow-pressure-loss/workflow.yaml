@@ -1,0 +1,53 @@
+workflow:
+  name: "internal-flow-pressure-loss"
+  status: validated
+  distribution:
+    - "openfoam.org:10"
+    - "openfoam.com:2206"
+  problem_fingerprint:
+    flow_regime: [steady, incompressible]
+    physics: [single-phase, isothermal]
+    geometry_class: [internal]
+    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
+    optimisation_family: [shape, density-topology]
+    objectives: [pressure-loss]
+    constraints: [volume]
+    design_variables: [boundary-displacement, porosity-field]
+  support_level: native
+  prerequisites:
+    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "blockMesh or snappyHexMesh for mesh generation"
+    - "Python 3 with numpy for post-processing"
+  steps:
+    - stage: environment
+      description: "Verify OpenFOAM distribution and adjoint solver availability via -help"
+    - stage: documentation
+      description: "Check installed tutorials for adjoint bend/duct examples"
+    - stage: intake
+      description: "Collect geometry, flow conditions, fluid properties, constraints"
+    - stage: mesh
+      description: "Generate mesh via blockMesh (simple) or snappyHexMesh (complex STL)"
+    - stage: case_setup
+      description: "Write 0/, constant/, system/ dictionaries from templates"
+    - stage: syntax_check
+      description: "foamDictionary -expand on all dictionaries"
+    - stage: smoke_run
+      description: "50 iterations coarse mesh to verify setup"
+    - stage: primal
+      description: "simpleFoam to full convergence (residuals < 1e-6)"
+    - stage: adjoint
+      description: "One adjoint solve to verify sensitivity computation"
+    - stage: optimize
+      description: "Full optimisation loop (20-100 design iterations)"
+    - stage: validate
+      description: "Check objective history, volume constraint, mass conservation"
+    - stage: report
+      description: "Generate validation report, convergence plots, flow field visualizations"
+  known_issues:
+    - "Foundation adjointShapeOptimizationFoam is laminar-only; RANS not supported"
+    - "OpenCFD adjointOptimisationFoam requires v2206+ for topology optimisation"
+    - "Volume constraint enforcement via augmented Lagrangian may need tuning"
+  references:
+    - "OpenFOAM adjoint optimisation user guide (version-specific)"
+    - "Nilsson & Giannakoglou (2014) - Adjoint wall functions for DUO shape optimization"
+    - "Othmer (2008) - Continuous adjoint formulation for ducted flows"

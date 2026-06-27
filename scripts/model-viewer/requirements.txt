@@ -1,0 +1,16 @@
+# model-viewer dependencies
+# Windows: all packages install via pip
+# Linux/WSL: install gmsh for STEP support
+
+trimesh>=4.0.0
+numpy>=1.20.0
+fastapi>=0.100.0
+uvicorn>=0.20.0
+
+# STEP file support (choose one):
+#   Windows: cascadio
+#   Linux/WSL: gmsh (pip install gmsh  OR  sudo apt install gmsh && pip install gmsh)
+#   Cross-platform alternative: cadquery
+
+# gradio (optional, for gradio mode)
+gradio>=4.0.0

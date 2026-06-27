@@ -1,0 +1,15 @@
+# Test artifacts
+detected_environment.json
+inspect_openfoam.json
+*.pyc
+__pycache__/
+venv/
+.venv/
+
+# GLB and face group map (generated per-model, not source)
+scripts/model-viewer/static/*.glb
+scripts/model-viewer/static/*.json
+
+# Python cache in scripts
+scripts/__pycache__/
+scripts/*/__pycache__/
