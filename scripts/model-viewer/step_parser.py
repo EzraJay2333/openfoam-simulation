@@ -120,7 +120,7 @@ class StepModel:
                              f"Windows: pip install cascadio\n"
                              f"Linux/WSL: pip install gmsh (or: sudo apt install gmsh)")
 
-        # Post-processing: validate and convert Scene to Trimesh
+        # Post-processing: handle Scene (multiple CAD bodies) vs single Trimesh
         if self._mesh is None:
             raise ValueError(f"Failed to load mesh from {self.file_path}")
         if isinstance(self._mesh, trimesh.Scene) and len(self._mesh.geometry) == 0:
@@ -129,26 +129,61 @@ class StepModel:
             raise ValueError(f"No faces found in {self.file_path}")
 
         if isinstance(self._mesh, trimesh.Scene):
-            meshes = []
-            for name, geom in self._mesh.geometry.items():
-                if hasattr(geom, "faces") and len(geom.faces) > 0:
-                    meshes.append(geom)
-            if not meshes:
-                raise ValueError("No mesh geometry found in scene")
+            # Process each geometry separately to preserve CAD body boundaries
+            all_groups = []
+            geom_offsets = {}  # track face index offset for each geometry
+            face_offset = 0
+
+            for gname, geom in self._mesh.geometry.items():
+                if not hasattr(geom, "faces") or len(geom.faces) == 0:
+                    continue
+                print(f"  Geometry '{gname}': {len(geom.vertices)} vertices, {len(geom.faces)} faces")
+                geom.merge_vertices()
+                geom.face_normals  # compute
+                groups = self._group_faces_on_geometry(geom)
+
+                # Offset face indices to global (concatenated) coordinates
+                for fg in groups:
+                    fg.face_indices = fg.face_indices + face_offset
+                    # Store reference to the correct mesh for this group
+                    fg._mesh = geom
+
+                all_groups.extend(groups)
+                geom_offsets[gname] = (face_offset, len(geom.faces))
+                face_offset += len(geom.faces)
+
+            # Build a single combined mesh for export
+            meshes = [g for g in self._mesh.geometry.values()
+                      if hasattr(g, "faces") and len(g.faces) > 0]
             self._mesh = trimesh.util.concatenate(meshes)
-            print(f"  Combined {len(meshes)} geometries into single mesh")
+            print(f"  Combined into {len(self._mesh.faces)} total faces")
 
-        print(f"  Loaded mesh: {len(self._mesh.vertices)} vertices, "
-              f"{len(self._mesh.faces)} faces")
+            # Update all FaceGroup mesh references to the combined mesh
+            for fg in all_groups:
+                fg._mesh = self._mesh
 
-        # Merge close vertices
-        self._mesh.merge_vertices()
+            # Re-assign global face IDs
+            self.face_groups = sorted(all_groups, key=lambda fg: fg.area, reverse=True)
+            for i, fg in enumerate(self.face_groups):
+                fg.face_id = i
+            print(f"  Total: {len(self.face_groups)} face groups across {len(meshes)} bodies")
 
-        # Compute face normals
-        self._mesh.face_normals
+        else:
+            # Single mesh
+            self._mesh.merge_vertices()
+            self._mesh.face_normals
+            self._group_faces()
+            print(f"  Loaded mesh: {len(self._mesh.vertices)} vertices, "
+                  f"{len(self._mesh.faces)} faces")
 
-        # Group faces
-        self._group_faces()
+        # Print summary
+        for fg in self.face_groups[:16]:
+            n = fg.normal
+            print(f"    Face {fg.face_id}: area={fg.area:.4f}, "
+                  f"normal=({n[0]:.2f},{n[1]:.2f},{n[2]:.2f}), "
+                  f"type={fg.face_type}, triangles={fg.triangle_count}")
+        if len(self.face_groups) > 16:
+            print(f"    ... and {len(self.face_groups) - 16} more")
 
     def _load_step(self):
         """Load STEP file, trying cascadio then gmsh then OCP."""
@@ -183,19 +218,120 @@ class StepModel:
             "  Alternative: pip install cadquery"
         )
 
-    def _group_faces(self):
-        """Group triangle faces into logical CAD faces by normal + adjacency."""
-        adjacency = self._mesh.face_adjacency  # (n_edges, 2) pairs of adjacent face indices
+    def _merge_coplanar_groups(self, groups: list[FaceGroup]) -> list[FaceGroup]:
+        """Merge face groups that are coplanar AND lie on the same plane."""
+        if len(groups) <= 1:
+            return groups
+        n = len(groups)
+        parent = list(range(n))
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+        all_c = np.array([g.centroid for g in groups])
+        span = np.linalg.norm(all_c.max(axis=0) - all_c.min(axis=0))
+        thr = span * 0.005  # 0.5% of model span
+        for i in range(n):
+            ni = np.array(groups[i].normal)
+            ci = np.array(groups[i].centroid)
+            for j in range(i + 1, n):
+                nj = np.array(groups[j].normal)
+                if abs(np.dot(ni, nj)) < 0.999:
+                    continue
+                cj = np.array(groups[j].centroid)
+                if abs(np.dot(ci - cj, nj)) < thr:
+                    union(i, j)
+        merged = {}
+        for i in range(n):
+            root = find(i)
+            merged.setdefault(root, []).append(i)
+        result = []
+        for root, indices in merged.items():
+            if len(indices) == 1:
+                result.append(groups[indices[0]])
+            else:
+                fg = FaceGroup(0, np.concatenate([groups[i].face_indices for i in indices]), self._mesh)
+                result.append(fg)
+        return result
+
+    def _group_faces_on_geometry(self, mesh: trimesh.Trimesh) -> list[FaceGroup]:
+        """Group faces within a single geometry using connected components.
+
+        Each connected component = one CAD face candidate.
+        Tiny components (noise) are merged into nearest large component
+        with the most similar normal direction.
+        """
+        from collections import deque
+
+        adj = mesh.face_adjacency
+        n_faces = len(mesh.faces)
+        normals = mesh.face_normals
+
+        # Build adjacency graph
+        adj_list = [set() for _ in range(n_faces)]
+        for a, b in adj:
+            ai, bi = int(a), int(b)
+            adj_list[ai].add(bi)
+            adj_list[bi].add(ai)
+
+        # Find connected components
+        visited = [False] * n_faces
+        components = []
+        for i in range(n_faces):
+            if visited[i]:
+                continue
+            comp = []
+            q = deque([i])
+            visited[i] = True
+            while q:
+                v = q.popleft()
+                comp.append(v)
+                for nb in adj_list[v]:
+                    if not visited[nb]:
+                        visited[nb] = True
+                        q.append(nb)
+            components.append(comp)
+
+        # Build FaceGroup objects directly from connected components.
+        # No merging — each component is a distinct CAD face.
+        groups = []
+        for comp in components:
+            indices = np.array(comp, dtype=int)
+            fg = FaceGroup(0, indices, mesh)  # temp ID, caller reassigns
+            groups.append(fg)
+
+        return groups
+
+    def _group_faces(self, dihedral_threshold_deg: float = 25.0):
+        """Group triangles by detecting sharp edges (dihedral angle > threshold).
+
+        Adjacent triangles with dihedral angle < threshold are merged into
+        the same face group. Sharp edges (angle > threshold) act as boundaries.
+        This naturally respects CAD edge lines (棱线) and face boundaries.
+        """
+        adjacency = self._mesh.face_adjacency
         normals = self._mesh.face_normals
         n_faces = len(self._mesh.faces)
 
-        # Build adjacency list
-        adj_list: list[set[int]] = [set() for _ in range(n_faces)]
-        for a, b in adjacency:
-            adj_list[a].add(b)
-            adj_list[b].add(a)
+        if len(adjacency) == 0:
+            # Single triangle or no adjacency — each face is its own group
+            self._build_groups_from_parent(
+                list(range(n_faces)), n_faces)
+            return
 
-        # Union-Find for grouping
+        # Compute dihedral angles for all adjacent pairs
+        n0 = normals[adjacency[:, 0]]
+        n1 = normals[adjacency[:, 1]]
+        dots = np.sum(n0 * n1, axis=1)
+        dots = np.clip(dots, -1.0, 1.0)
+        dihedral_deg = np.degrees(np.arccos(dots))
+
+        # Union-Find: merge only along smooth edges
         parent = list(range(n_faces))
 
         def find(x):
@@ -209,35 +345,47 @@ class StepModel:
             if px != py:
                 parent[px] = py
 
-        # Group by normal similarity + adjacency (BFS-inspired)
-        normal_threshold = 0.95  # cos(angle) threshold for "same direction"
+        for idx in range(len(adjacency)):
+            if dihedral_deg[idx] < dihedral_threshold_deg:
+                a, b = int(adjacency[idx, 0]), int(adjacency[idx, 1])
+                union(a, b)
 
-        for i in range(n_faces):
-            for j in adj_list[i]:
-                if find(i) == find(j):
-                    continue
-                dot = np.dot(normals[i], normals[j])
-                if dot > normal_threshold:
-                    union(i, j)
+        self._build_groups_from_parent(parent, n_faces)
+
+        # Print dihedral stats for debugging
+        sharp_count = int(np.sum(dihedral_deg >= dihedral_threshold_deg))
+        print(f"    Dihedral: {len(adjacency)} edges, "
+              f"{sharp_count} sharp (>{dihedral_threshold_deg}°), "
+              f"range=[{dihedral_deg.min():.1f}°, {dihedral_deg.max():.1f}°]")
+
+    def _build_groups_from_parent(self, parent, n_faces):
+        """Build FaceGroup objects from Union-Find parent array."""
+        normals = self._mesh.face_normals
 
         # Collect groups
         groups: dict[int, list[int]] = {}
         for i in range(n_faces):
-            root = find(i)
+            root = parent[i]
+            # Path compress
+            while root != parent[root]:
+                root = parent[root]
             groups.setdefault(root, []).append(i)
 
-        # Filter tiny groups (noise) - merge into nearest large group
-        min_group_size = max(1, n_faces // 500)  # at least 1, at most 0.2% of faces
+        # Filter tiny groups (noise): merge into nearest large group
+        # For meshes < 500 faces, keep groups of 1+ triangles
+        min_group_size = max(1, n_faces // 200)
         large_groups = {k: v for k, v in groups.items() if len(v) >= min_group_size}
         tiny_groups = {k: v for k, v in groups.items() if len(v) < min_group_size}
 
-        # Merge tiny groups into nearest large group by normal similarity
         for tiny_root, tiny_faces in tiny_groups.items():
             if not large_groups:
                 large_groups[tiny_root] = tiny_faces
                 continue
             tiny_normal = normals[tiny_faces].mean(axis=0)
-            tiny_normal /= np.linalg.norm(tiny_normal)
+            tiny_len = np.linalg.norm(tiny_normal)
+            if tiny_len > 0:
+                tiny_normal /= tiny_len
+            # Find nearest large group by shared-edge proximity
             best_root = max(large_groups, key=lambda r: abs(
                 np.dot(tiny_normal, normals[large_groups[r][0]])
             ))
@@ -251,21 +399,19 @@ class StepModel:
             face_group_objects.append(fg)
 
         face_group_objects.sort(key=lambda fg: fg.area, reverse=True)
-        # Re-assign IDs after sorting
         for i, fg in enumerate(face_group_objects):
             fg.face_id = i
 
         self.face_groups = face_group_objects
         print(f"  Grouped into {len(self.face_groups)} face groups")
 
-        # Print summary
-        for fg in self.face_groups[:10]:
+        for fg in self.face_groups[:16]:
             n = fg.normal
             print(f"    Face {fg.face_id}: area={fg.area:.4f}, "
                   f"normal=({n[0]:.2f},{n[1]:.2f},{n[2]:.2f}), "
                   f"type={fg.face_type}, triangles={fg.triangle_count}")
-        if len(self.face_groups) > 10:
-            print(f"    ... and {len(self.face_groups) - 10} more")
+        if len(self.face_groups) > 16:
+            print(f"    ... and {len(self.face_groups) - 16} more")
 
     def export_glb(self, output_path: str):
         """
