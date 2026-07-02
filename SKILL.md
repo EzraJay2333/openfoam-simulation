@@ -8,7 +8,7 @@ description: >
   simulation, drag/lift analysis, pressure-loss optimization, duct/pipe flow,
   parametric CFD sweeps, or any task that mentions OpenFOAM, foam, blockMesh,
   snappyHexMesh, simpleFoam, pimpleFoam, adjointOptimisationFoam,
-  adjointShapeOptimizationFoam, or fluid dynamics simulation. Use this skill even
+  adjointShapeOptimisationFoam, adjointShapeOptimizationFoam, or fluid dynamics simulation. Use this skill even
   when the user only hints at running a fluid simulation or asks vaguely about
   "simulating flow" or "optimizing a channel/pipe/duct/wing/heat-sink shape."
 compatibility: Linux or WSL2 with OpenFOAM Foundation (org) or OpenCFD (com) installed, bash, Python 3
@@ -48,7 +48,7 @@ This skill enforces a 13-step state machine. Each step gates the next. If any ma
 
 ## Step 1: Environment Gate
 
-Detect and record the execution environment. Run `scripts/detect_environment.sh`. This script outputs JSON with:
+Run `python3 scripts/doctor.py --repository-only`, then detect and record the execution environment with `scripts/detect_environment.sh`. The repository doctor must pass before simulation work begins. The environment script outputs JSON with:
 - `host_os`, `host_kernel`, `architecture`
 - `is_wsl`, `wsl_version` (if applicable)
 - `shell`, `mpi_available`, `mpi_flavors`
@@ -94,6 +94,8 @@ Use `references/intake-schema.md` to collect a complete normalized simulation sp
 - Compute budget, parallelism, restart policy, storage limits
 - Requested results and visualization/export formats
 - Assumptions, unresolved risks, and source provenance
+
+Before accepting geometry or physics, apply `references/geometry-physics-vv.md`: verify CAD units, scale, watertightness, normals, complete BC coverage, governing dimensionless numbers, and material-property validity.
 
 **Geometry intake — two paths:**
 
@@ -184,11 +186,41 @@ Process:
 5. State why each alternative was rejected
 6. Record the decision with sources in the simulation specification
 
-**Critical rule:** Never select a solver solely from a remembered name. Solver names are version-dependent — `adjointOptimisationFoam` vs `adjointShapeOptimizationFoam` exist in different distributions and versions. Always verify availability in the installed environment.
+Return a `solver_requirement_report` for every solver decision. Keep capability
+requirements separate from executable names so missing physics cannot be hidden by
+a similarly named solver:
+
+```yaml
+solver_requirement_report:
+  required_capabilities: []
+  installed_match: null
+  missing_capabilities: []
+  acquisition_branch: A | B | C | D
+  evidence: []
+  recommended_next_action: ""
+```
+
+For topology optimisation, distinguish these routes explicitly:
+
+- Foundation 13 `adjointShapeOptimisationFoam`: legacy blockage-field optimisation
+  for total pressure loss only; do not classify it as boundary-displacement shape
+  optimisation or a general topology framework.
+- OpenCFD `adjointOptimisationFoam`: shape capability is version-dependent; native
+  isothermal porosity/level-set topology requires v2312 or newer and exact-version
+  tutorial/source evidence.
+- CHT or heat-transfer topology: use a primal thermal solver plus an external
+  optimiser, or Branch C custom adjoint development, unless the installed version
+  supplies direct thermal-adjoint evidence.
+- Pareto multi-objective optimisation: require an external multi-objective driver;
+  a weighted scalar objective is not evidence of Pareto capability.
+
+**Critical rule:** Never select a solver solely from a remembered name. Solver names and semantics are version-dependent — `adjointOptimisationFoam`, `adjointShapeOptimisationFoam`, and `adjointShapeOptimizationFoam` occur in different distributions and releases. Always verify the exact executable, source and tutorial in the installed environment.
 
 **Stop conditions:**
 - No solver matches required capabilities → report gap, suggest alternatives, stop
 - Optional capability missing (e.g., thermal requested but only isothermal solver available) → report the limitation, ask whether to proceed with reduced scope
+- CHT topology requested without installed thermal-adjoint evidence → route to external/custom and do not generate a native adjoint dictionary
+- Pareto front requested with only a scalar optimiser → report the missing multi-objective driver and stop before a production run
 
 ## Step 7: Solver Source Decision
 
@@ -233,6 +265,7 @@ Search `registry/learned-workflows/` for the highest-compatible validated workfl
 4. Generate or modify dictionaries using evidence from Step 4
 5. Write a `simulation_spec.json` alongside the case recording all decisions
 6. Run the case-construction record through `scripts/validate_case.sh` for syntax and structure checks
+7. Create `run_manifest.json` with `scripts/create_run_manifest.py` before and after execution
 
 ## Step 10: Staged Execution
 
@@ -269,7 +302,7 @@ Before the full run, present a compute estimate and let the user choose:
 
 ## Step 11: Validation and Reporting
 
-Follow `references/validation-and-convergence.md`. Generate a validation report covering:
+Follow `references/validation-and-convergence.md` and `references/geometry-physics-vv.md`. Decision-critical work requires mesh/timestep independence and benchmark evidence. Optimised designs require an independent body-fitted primal re-evaluation. Generate a validation report covering:
 
 - Numerical convergence (residuals, iterations, CFL if transient)
 - Conservation checks (mass, momentum, energy where applicable)
@@ -325,6 +358,7 @@ Every completed run must produce:
 7. Validation and convergence report
 8. Result summary with objective and constraint histories
 9. Learning candidate (when workflow was previously unregistered)
+10. Immutable run manifest (`run_manifest.json`)
 
 ## Reference Files
 
@@ -337,7 +371,10 @@ Every completed run must produce:
 | `references/solver-compilation.md` | Step 7 — solver source decision (binary vs compile vs custom) |
 | `references/topology-optimization.md` | Step 8 — when optimisation family is topology or shape optimisation |
 | `references/validation-and-convergence.md` | Steps 10-11 — for gate criteria, validation, and ParaView post-processing |
+| `references/geometry-physics-vv.md` | Steps 3, 9, and 11 — geometry QA, physics sanity, GCI, and optimised-design re-evaluation |
+| `references/error-diagnostics.md` | Step 10 — failure classification and recovery evidence |
 | `references/compute-optimization.md` | Step 3 and Step 10f — MPI/GPU configuration and performance estimation |
+| `references/local-topology-setup-cn.md` | Steps 1, 6, and 7 — local Foundation/OpenCFD/external-optimiser setup tutorial |
 | `registry/solvers.yaml` | Step 6 — solver capability matching |
 | `registry/problem-types.yaml` | Step 5 — problem fingerprinting |
 | `registry/learned-workflows/` | Step 8 — workflow resolution |

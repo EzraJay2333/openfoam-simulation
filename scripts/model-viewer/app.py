@@ -14,17 +14,16 @@ Two modes:
 
 import argparse
 import sys
-import os
-import webbrowser
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from server import app
 import uvicorn
+from server import app
 
 
 def launch_web_mode(host: str, port: int, no_browser: bool):
@@ -65,10 +64,11 @@ def launch_web_mode(host: str, port: int, no_browser: bool):
 
 def launch_gradio_mode(host: str, port: int, share: bool):
     """Launch Gradio-based alternative (simpler UI)."""
-    import gradio as gr
-    from step_parser import parse_file, export_model_glb
-    import tempfile
     import json
+    import tempfile
+
+    import gradio as gr
+    from step_parser import export_model_glb, parse_file
 
     tmp_dir = Path(tempfile.gettempdir()) / "model-viewer"
 

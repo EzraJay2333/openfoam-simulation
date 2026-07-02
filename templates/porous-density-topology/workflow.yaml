@@ -1,38 +1,45 @@
 workflow:
   name: "porous-density-topology"
-  status: validated
+  status: experimental
   distribution:
-    - "openfoam.com:2206"  # Only OpenCFD has native support; Foundation requires external optimizer
+    - "openfoam.com:2312"  # Native topology support verified from OpenCFD v2312
   problem_fingerprint:
     flow_regime: [steady, incompressible]
-    physics: [single-phase, isothermal, conjugate-heat-transfer]
+    physics: [single_phase, isothermal]
     geometry_class: [internal]
-    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
-    optimisation_family: [density-topology]
-    objectives: [pressure-loss, heat-transfer, multi-objective]
+    spatial_dimensions: [2d_planar, 2d_axisymmetric, 3d]
+    optimisation_family: [density_topology]
+    objectives: [pressure_loss, uniformity]
     constraints: [volume]
-    design_variables: [porosity-field]
+    design_variables: [porosity_field]
   support_level: native
   prerequisites:
-    - "adjointOptimisationFoam (OpenCFD v2206+)"
+    - "adjointOptimisationFoam (OpenCFD v2312+)"
     - "Helmholtz filter PDE solver (built-in)"
     - "Python 3 with numpy, matplotlib for post-processing"
   alternative:
     distribution: "openfoam.org"
     support_level: external
-    description: "Use porousSimpleFoam + external optimizer (SciPy/pyOpt/DAKOTA)"
+    description: "Use porousSimpleFoam + external optimizer (SciPy/pyOptSparse/DAKOTA)"
     caveat: "Requires manual gradient computation or finite differences; slower convergence"
+  unsupported_profiles:
+    - profile: conjugate_heat_transfer_topology
+      support_level: external
+      reason: "This native template is mono-fluid and isothermal; use a thermal primal plus an external optimiser or a custom thermal adjoint"
+    - profile: pareto_multi_objective
+      support_level: external
+      reason: "Use a verified multi-objective driver; scalar objective composition is not a Pareto front"
   steps:
     - stage: environment
       description: "Verify adjointOptimisationFoam supports porosity design variables (-help)"
     - stage: mesh
       description: "Generate uniform blockMesh for full design domain"
     - stage: initialization
-      description: "Set initial porosity field to all-fluid (α=1)"
+      description: "Set the design field to the installed tutorial's all-fluid value; do not assume the zero/one convention"
     - stage: case_setup
       description: "Configure adjointDict with porosity design variables, Brinkman penalty, Helmholtz filter"
     - stage: smoke_run
-      description: "Few iterations with uniform α to verify setup"
+      description: "Few iterations with the verified uniform all-fluid design value to verify setup"
     - stage: sensitivity_test
       description: "One adjoint solve to verify sensitivity computation"
     - stage: optimize
@@ -47,7 +54,7 @@ workflow:
     - "Solver instability if permeability approaches zero in solid regions"
     - "Foundation distribution requires external optimizer — NOT a drop-in replacement"
   references:
-    - "OpenCFD adjointOptimisationFoam documentation (v2206+)"
+    - "OpenCFD adjointOptimisationFoam documentation (v2312+)"
     - "Borrvall & Petersson (2003) - Topology optimization of fluids in Stokes flow"
     - "Gersborg-Hansen et al. (2005) - Topology optimization of Navier-Stokes flow"
     - "Papoutsis-Kiachagias & Giannakoglou (2016) - Continuous adjoint for fluid topology optimization"

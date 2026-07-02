@@ -274,7 +274,7 @@ optimisation:
     sensitivity_method: "surface" | "volume"
     step_size: 0.001
     max_iterations: 100
-  external_optimizer: null | "DAKOTA" | "pyOpt" | "scipy"
+  external_optimizer: null | "DAKOTA" | "pyOptSparse" | "scipy"
 ```
 
 ### 10. Convergence and Validation Criteria

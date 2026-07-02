@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "solver-registry.schema.json",
+  "type": "object",
+  "required": ["schema_version", "canonical_aliases", "solvers", "external_tools"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "canonical_aliases": {"type": "object", "additionalProperties": {"type": "string"}},
+    "solvers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["distribution", "status"]
+      }
+    },
+    "external_tools": {"type": "object"}
+  },
+  "additionalProperties": true
+}

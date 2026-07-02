@@ -36,7 +36,7 @@ dimensions:
       description: "Detached Eddy Simulation (hybrid RANS-LES)"
 
   phases:
-    single-phase:
+    single_phase:
       description: "One fluid phase"
     multiphase:
       description: "Multiple fluid phases"
@@ -80,9 +80,9 @@ dimensions:
       description: "Both internal and external regions"
 
   spatial_dimensions:
-    "2d-planar":
+    "2d_planar":
       description: "Two-dimensional, planar geometry"
-    "2d-axisymmetric":
+    "2d_axisymmetric":
       description: "Two-dimensional, axisymmetric (wedge) geometry"
     "3d":
       description: "Three-dimensional geometry"
@@ -104,22 +104,26 @@ dimensions:
       description: "Boundary deformation with preserved topology"
       design_variables: [boundary_displacement, control_points]
       typical_openfoam: adjointShapeOptimizationFoam or adjointOptimisationFoam
-    density-topology:
+    legacy_blockage_topology:
+      description: "Legacy volumetric blockage update for total-pressure-loss minimisation"
+      design_variables: [blockage_field]
+      typical_openfoam: Foundation 13 adjointShapeOptimisationFoam
+    density_topology:
       description: "Material distribution via porosity/density field"
       design_variables: [porosity_field]
       typical_openfoam: adjointOptimisationFoam or external optimizer
-    level-set:
+    level_set:
       description: "Explicit interface tracking"
       design_variables: [interface_position]
       typical_openfoam: custom or third-party
-    parameter-sweep:
+    parameter_sweep:
       description: "Discrete parameter variation"
       design_variables: [geometric_parameters, physical_parameters]
       typical_openfoam: any solver + external orchestration
     external:
       description: "Optimisation driven by external tool"
       design_variables: [any]
-      typical_openfoam: any solver + DAKOTA/pyOpt/SciPy
+      typical_openfoam: any solver + DAKOTA/pyOptSparse/SciPy
 
   objectives:
     pressure_loss:
@@ -130,13 +134,13 @@ dimensions:
       typical_cost_function: "drag"
     lift:
       description: "Maximize lift or lift-to-drag ratio"
-      typical_cost_function: "lift" or "liftToDrag"
+      typical_cost_function: "lift_or_lift_to_drag"
     uniformity:
       description: "Minimize flow maldistribution"
-      typical_cost_function: "uniformity" or "flowRateVariance"
+      typical_cost_function: "uniformity_or_flow_rate_variance"
     heat_transfer:
       description: "Maximize heat transfer rate or minimize max temperature"
-      typical_cost_function: "heatTransfer" or "maxTemperature"
+      typical_cost_function: "heat_transfer_or_max_temperature"
     multi_objective:
       description: "Trade off multiple competing objectives"
       typical_cost_function: "weighted sum or Pareto"
@@ -177,36 +181,49 @@ known_mappings:
       flow_regime: steady
       compressibility: incompressible
       turbulence: laminar
-      phases: single-phase
+      phases: single_phase
       thermal: isothermal
       geometry_class: internal
       optimisation_family: shape
       objectives: [pressure_loss]
       constraints: [volume]
     workflows:
-      - "internal-flow-pressure-loss"
       - "duct-shape-optimization"
-    support_level: native
+    support_level: unverified
+
+  - fingerprint:
+      flow_regime: steady
+      compressibility: incompressible
+      phases: single_phase
+      thermal: isothermal
+      geometry_class: internal
+      optimisation_family: legacy_blockage_topology
+      objectives: [pressure_loss]
+    workflows:
+      - "internal-flow-pressure-loss"
+    support_level: unverified  # Native only when the Foundation 13 binary is present
 
   - fingerprint:
       flow_regime: steady
       compressibility: incompressible
       turbulence: laminar
-      phases: single-phase
+      phases: single_phase
       thermal: conjugate_heat_transfer
       geometry_class: internal
-      optimisation_family: density-topology
+      optimisation_family: density_topology
       objectives: [heat_transfer, pressure_loss]
       constraints: [volume]
-    workflows:
-      - "porous-density-topology"
-    support_level: native  # OpenCFD v2206+
+    workflows: []
+    support_level: unverified
+    required_route: external_or_custom
+    primal_candidates: [foamMultiRun, chtMultiRegionFoam]
+    stop_condition: "Do not generate a native adjoint topology dictionary without exact-version thermal-adjoint evidence"
 
   - fingerprint:
       flow_regime: steady
       compressibility: incompressible
       turbulence: RANS
-      phases: single-phase
+      phases: single_phase
       thermal: isothermal
       geometry_class: external
       optimisation_family: shape
@@ -220,13 +237,13 @@ known_mappings:
       flow_regime: steady
       compressibility: incompressible
       turbulence: laminar
-      phases: single-phase
+      phases: single_phase
       thermal: isothermal
       geometry_class: internal
-      optimisation_family: density-topology
+      optimisation_family: density_topology
       objectives: [pressure_loss]
       constraints: [volume]
     workflows:
       - "internal-flow-pressure-loss-topology"
       - "porous-density-topology"
-    support_level: native  # OpenCFD v2206+
+    support_level: native  # OpenCFD v2312+

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simulation-spec.schema.json",
+  "title": "OpenFOAM simulation specification",
+  "type": "object",
+  "required": ["schema_version", "project_name", "environment", "geometry", "flow_regime"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "project_name": {"type": "string", "minLength": 1},
+    "environment": {"type": "object"},
+    "geometry": {"type": "object"},
+    "flow_regime": {"type": "object"},
+    "physical_models": {"type": "object"},
+    "optimisation": {"type": "object"}
+  },
+  "additionalProperties": true
+}

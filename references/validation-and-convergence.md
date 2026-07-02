@@ -94,7 +94,7 @@ Run the primal solver on the initial design to establish a baseline.
 
 #### Residual Convergence
 
-Extract from log using `scripts/parse-of-log.py` or `foamLog`:
+Extract from log using `scripts/parse_of_log.py` or `foamLog`:
 
 ```bash
 foamLog log.primal
@@ -254,7 +254,7 @@ Before launching the full optimisation or production run:
 
 ## Failure Diagnosis
 
-When any gate fails, read `references/error-diagnostics.md` if present, or apply these general patterns:
+When any gate fails, read `references/error-diagnostics.md` and preserve the complete failed-run manifest.
 
 ### Solver Divergence
 

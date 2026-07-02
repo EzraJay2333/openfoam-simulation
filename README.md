@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/lang-English-blue)](README.md)
 [![简体中文](https://img.shields.io/badge/lang-简体中文-red)](README_CN.md)
 
-12-step OpenFOAM fluid simulation skill for Claude Code — plan, build, run, validate, and document CFD simulations on Linux/WSL. Specializes in fluid topology/shape optimization with a self-learning knowledge base.
+13-step OpenFOAM fluid simulation skill for agentic tools — plan, build, run, validate, and document CFD simulations on Linux/WSL. Specializes in evidence-gated fluid topology/shape optimization.
 
 ## Quick Install
 
@@ -22,7 +22,13 @@ Pick your agent and OS, then run the command:
 | **Cursor** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor\skills\openfoam-simulation` |
 | **Manual (any agent)** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ./openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .\openfoam-simulation` |
 
-Restart your agent after cloning. No additional setup required.
+Install the core validation dependencies and restart your agent:
+
+```bash
+python3 -m pip install -e <your-skills-dir>/openfoam-simulation
+```
+
+For the interactive CAD viewer, install `-e ".[viewer]"` from the skill directory. Gradio mode additionally requires `scripts/model-viewer/requirements-gradio.txt`.
 
 **💡 Tip — one-liner for any agent on Linux/macOS/WSL:**
 ```bash
@@ -50,11 +56,14 @@ No reinstalling, no re-downloading. Git handles everything.
 ## Requirements
 
 - **OS**: Linux (native) or WSL2 (Windows 11)
-- **OpenFOAM**: Foundation (openfoam.org) v10+ or OpenCFD (openfoam.com) v2206+
+- **OpenFOAM**: Foundation v10+ or OpenCFD v1906+ for version-matched shape workflows; native OpenCFD mono-fluid isothermal topology workflows require v2312+
 - **Python**: 3.x with numpy, matplotlib
 - **ParaView**: Optional, for post-processing visualization
 
 The skill **never** installs OpenFOAM or system software — it only detects what exists.
+
+For the audited local Foundation 13 setup and isolated OpenCFD v2512/external-optimizer
+installation steps, see the [Chinese topology setup tutorial](references/local-topology-setup-cn.md).
 
 ## What It Does
 
@@ -72,15 +81,16 @@ The skill **never** installs OpenFOAM or system software — it only detects wha
 | 10 | **Staged execution**: syntax → mesh → smoke → primal → adjoint → compute config → full run |
 | 11 | Validates convergence, conservation, mesh quality, physical plausibility |
 | 12 | **Records learning candidate** for future reuse |
+| 13 | Applies compute optimisation policy across intake, compilation, and execution |
 
 ### Pre-loaded Classic Templates
 
 | Template | Problem | Optimization |
 |----------|---------|-------------|
-| `internal-flow-pressure-loss` | Duct/bend/manifold pressure drop | Shape + Topology |
+| `internal-flow-pressure-loss` | Duct/bend/manifold pressure drop | Foundation legacy blockage / OpenCFD isothermal topology |
 | `external-flow-drag` | Aerodynamic drag reduction | Shape |
 | `duct-shape-optimization` | Bend/diffuser/nozzle contour | Shape + Multi-objective |
-| `porous-density-topology` | Heat sink / fluid network | Density Topology + CHT |
+| `porous-density-topology` | Isothermal fluid network | OpenCFD v2312+ density topology; CHT routes external/custom |
 
 ### Compute Optimization
 
@@ -95,7 +105,7 @@ Each successful simulation type is recorded as a `learned-workflow`. New problem
 
 ```
 openfoam-simulation/
-├── SKILL.md                        # Core skill (300 lines, 12-step state machine)
+├── SKILL.md                        # Core skill (13-step state machine)
 ├── README.md                       # This file
 ├── references/
 │   ├── intake-schema.md            # 13-section parameter specification
@@ -113,17 +123,19 @@ openfoam-simulation/
 ├── scripts/
 │   ├── detect_environment.sh       # Step 1: WSL/Linux/OpenFOAM detection
 │   ├── inspect_openfoam.sh         # Step 2: distribution/version/solver identity
+│   ├── doctor.py                   # Repository and OpenFOAM preflight
 │   ├── validate_case.sh            # Step 9: case structure validation
+│   ├── parse_of_log.py             # Structured solver-log parsing
 │   └── scaffold_learning_record.py # Step 12: learning candidate generation
 └── evals/
-    └── evals.json                  # 6 test scenarios with assertions
+    └── evals.json                  # 7 test scenarios with assertions
 ```
 
 ## Trigger Phrases
 
 The skill activates when you mention any of:
 - OpenFOAM, foam, blockMesh, snappyHexMesh
-- simpleFoam, pimpleFoam, adjointOptimisationFoam, adjointShapeOptimizationFoam
+- simpleFoam, pimpleFoam, adjointOptimisationFoam, adjointShapeOptimisationFoam, adjointShapeOptimizationFoam
 - CFD simulation, flow simulation, fluid simulation
 - Topology optimization, shape optimization, adjoint optimization
 - Pressure loss optimization, drag minimization, heat transfer simulation

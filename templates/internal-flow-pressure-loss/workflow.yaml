@@ -1,21 +1,22 @@
 workflow:
   name: "internal-flow-pressure-loss"
-  status: validated
+  status: experimental
   distribution:
-    - "openfoam.org:10"
-    - "openfoam.com:2206"
+    - "openfoam.org:13"
+    - "openfoam.com:2312+"
   problem_fingerprint:
     flow_regime: [steady, incompressible]
-    physics: [single-phase, isothermal]
+    physics: [single_phase, isothermal]
     geometry_class: [internal]
-    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
-    optimisation_family: [shape, density-topology]
-    objectives: [pressure-loss]
+    spatial_dimensions: [2d_planar, 2d_axisymmetric, 3d]
+    optimisation_family: [legacy_blockage_topology, density_topology]
+    objectives: [pressure_loss]
     constraints: [volume]
-    design_variables: [boundary-displacement, porosity-field]
-  support_level: native
+    design_variables: [blockage_field, porosity_field]
+  support_level: unverified
   prerequisites:
-    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "OpenCFD v2312+ adjointOptimisationFoam for general isothermal topology, verified against the installed tutorial/source"
+    - "Foundation 13 adjointShapeOptimisationFoam only for legacy blockage-field total-pressure-loss optimisation when present as a binary"
     - "blockMesh or snappyHexMesh for mesh generation"
     - "Python 3 with numpy for post-processing"
   steps:
@@ -44,8 +45,9 @@ workflow:
     - stage: report
       description: "Generate validation report, convergence plots, flow field visualizations"
   known_issues:
-    - "Foundation adjointShapeOptimizationFoam is laminar-only; RANS not supported"
-    - "OpenCFD adjointOptimisationFoam requires v2206+ for topology optimisation"
+    - "Foundation 13 adjointShapeOptimisationFoam is not a boundary-displacement shape solver and has no generic objective/constraint manager"
+    - "The Foundation legacy branch does not provide thermal objectives, a generic volume constraint, or Pareto multi-objective optimisation"
+    - "OpenCFD adjointOptimisationFoam requires v2312+ for native topology optimisation"
     - "Volume constraint enforcement via augmented Lagrangian may need tuning"
   references:
     - "OpenFOAM adjoint optimisation user guide (version-specific)"

@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/lang-English-blue)](README.md)
 [![简体中文](https://img.shields.io/badge/lang-简体中文-red)](README_CN.md)
 
-为 Claude Code、Codex、Gemini CLI、Copilot、Cursor 打造的 12 步 OpenFOAM 流体仿真技能 —— 在 Linux/WSL 上规划、搭建、运行、验证和记录 CFD 仿真。专注于流体拓扑/形状优化，内置自学习知识库。
+面向 Claude Code、Codex、Gemini CLI、Copilot、Cursor 的 13 步 OpenFOAM 流体仿真技能——在 Linux/WSL 上规划、搭建、运行、验证和记录 CFD 仿真。
 
 ## 快速安装
 
@@ -22,7 +22,13 @@
 | **Cursor** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor/skills/openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .cursor\skills\openfoam-simulation` |
 | **手动（任意智能体）** | `git clone https://github.com/EzraJay2333/openfoam-simulation.git ./openfoam-simulation` | `git clone https://github.com/EzraJay2333/openfoam-simulation.git .\openfoam-simulation` |
 
-克隆后重启智能体即可生效，无需额外配置。
+克隆后安装核心校验依赖并重启智能体：
+
+```bash
+python3 -m pip install -e <你的技能目录>/openfoam-simulation
+```
+
+交互式 CAD Viewer 需在技能目录安装 `-e ".[viewer]"`；Gradio 模式还需安装 `scripts/model-viewer/requirements-gradio.txt`。
 
 **💡 一行搞定（Linux/macOS/WSL）：**
 ```bash
@@ -50,11 +56,14 @@ cd <你的技能目录>/openfoam-simulation && git pull
 ## 环境要求
 
 - **操作系统**: Linux (原生) 或 WSL2 (Windows 11)
-- **OpenFOAM**: Foundation (openfoam.org) v10+ 或 OpenCFD (openfoam.com) v2206+
+- **OpenFOAM**: Foundation v10+；OpenCFD v1906+ 可执行版本匹配的形状优化；原生 OpenCFD 等温拓扑优化要求 v2312+
 - **Python**: 3.x 带 numpy、matplotlib
 - **ParaView**: 可选，用于后处理可视化
 
 该技能**绝不**会安装 OpenFOAM 或系统软件 —— 仅检测已有环境。
+
+针对 Foundation 13、OpenCFD v2512、SciPy、DAKOTA 和 pyOptSparse 的隔离安装及
+验收步骤，参见[本机拓扑优化能力补充教程](references/local-topology-setup-cn.md)。
 
 ## 工作流程
 
@@ -72,15 +81,16 @@ cd <你的技能目录>/openfoam-simulation && git pull
 | 10 | **分阶段执行**：语法检查 → 网格 → 烟雾测试 → 原始场 → 伴随 → 算力配置 → 完整运行 |
 | 11 | 验证收敛性、守恒性、网格质量、物理合理性 |
 | 12 | **记录学习候选**，供未来复用 |
+| 13 | 在输入、编译和执行阶段统一应用算力优化策略 |
 
 ### 预置经典模板
 
 | 模板 | 问题类型 | 优化方法 |
 |------|---------|---------|
-| `internal-flow-pressure-loss` | 管道/弯管/歧管压降 | 形状 + 拓扑 |
+| `internal-flow-pressure-loss` | 管道/弯管/歧管压降 | Foundation legacy 阻塞场 / OpenCFD 等温拓扑 |
 | `external-flow-drag` | 外流气动减阻 | 形状 |
 | `duct-shape-optimization` | 弯管/扩散器/喷嘴轮廓 | 形状 + 多目标 |
-| `porous-density-topology` | 散热器/流体网络 | 密度拓扑 + 共轭传热 |
+| `porous-density-topology` | 等温流体网络 | OpenCFD v2312+ 密度拓扑；CHT 转外部/定制路线 |
 
 ### 算力优化
 
@@ -95,7 +105,7 @@ cd <你的技能目录>/openfoam-simulation && git pull
 
 ```
 openfoam-simulation/
-├── SKILL.md                        # 核心技能（300行，12步状态机）
+├── SKILL.md                        # 核心技能（13步状态机）
 ├── README.md                       # 英文说明
 ├── README_CN.md                    # 中文说明（本文件）
 ├── references/
@@ -105,7 +115,8 @@ openfoam-simulation/
 │   ├── solver-compilation.md       # 编译/修改/第三方决策树
 │   ├── topology-optimization.md    # 形状 vs 拓扑 vs 水平集分类
 │   ├── compute-optimization.md     # MPI/GPU 配置与估算
-│   └── validation-and-convergence.md  # 7 阶段验证门控 + ParaView
+│   ├── validation-and-convergence.md  # 7 阶段验证门控 + ParaView
+│   └── local-topology-setup-cn.md     # 本机拓扑/传热/多目标补充教程
 ├── registry/
 │   ├── solvers.yaml                # 16 个求解器 + 3 个外部工具
 │   ├── problem-types.yaml          # 13 维分类体系
@@ -117,14 +128,14 @@ openfoam-simulation/
 │   ├── validate_case.sh            # 步骤9：案例结构验证
 │   └── scaffold_learning_record.py # 步骤12：学习候选生成
 └── evals/
-    └── evals.json                  # 6 个测试场景 + 断言
+    └── evals.json                  # 7 个测试场景 + 断言
 ```
 
 ## 触发短语
 
 当你提到以下任何内容时，技能会自动激活：
 - OpenFOAM、foam、blockMesh、snappyHexMesh
-- simpleFoam、pimpleFoam、adjointOptimisationFoam、adjointShapeOptimizationFoam
+- simpleFoam、pimpleFoam、adjointOptimisationFoam、adjointShapeOptimisationFoam、adjointShapeOptimizationFoam
 - CFD 仿真、流体仿真、流场模拟
 - 拓扑优化、形状优化、伴随优化
 - 压降最小化、减阻、传热模拟

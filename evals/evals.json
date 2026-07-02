@@ -19,7 +19,7 @@
     {
       "id": 2,
       "prompt": "I have a WSL Ubuntu 22.04 with OpenFOAM installed. I want to optimize a 90-degree pipe bend to minimize pressure loss. The pipe diameter is 25mm, water at 20°C flows at 2 m/s. Help me set up and run the simulation.",
-      "expected_output": "Skill should execute full 11-step state machine: environment gate → OpenFOAM identity → structured intake → documentation gate → classify → solver selection → workflow resolution → case construction → staged execution.",
+      "expected_output": "Skill should execute the applicable gates in the 13-step state machine, including preflight, geometry/physics QA, case construction, staged execution and validation.",
       "assertions": [
         "Identifies problem as internal-flow-pressure-loss shape optimization",
         "Distinguishes shape vs topology optimization",
@@ -35,9 +35,9 @@
     {
       "id": 3,
       "prompt": "I need to do a topology optimization of a heat sink cooling channel. Minimize both pressure drop and max temperature. The domain is 50mm x 20mm x 5mm, aluminum solid, water coolant, heat flux of 10 W/cm² on the bottom. What solver should I use?",
-      "expected_output": "Should identify that adjointOptimisationFoam (OpenCFD v2206+) supports CHT topology optimization. Should NOT recommend Foundation's adjointShapeOptimizationFoam (no CHT, no topology).",
+      "expected_output": "Should identify native OpenCFD topology support from v2312, reject Foundation's legacy shape solver for topology, and mark CHT adjoint topology as unverified unless version-matched official evidence exists.",
       "assertions": [
-        "Does NOT recommend Foundation adjointShapeOptimizationFoam for CHT topology optimization",
+        "Does NOT recommend Foundation adjointShapeOptimisationFoam for CHT topology optimization",
         "Identifies capability gap: no native CHT + topology in Foundation",
         "Distinguishes OpenCFD vs Foundation distribution capabilities",
         "Cites evidence from installed environment (source code, -help)",
@@ -90,6 +90,21 @@
         "Produces structured diagnostic output (machine-readable)",
         "Suggests running laminar first to isolate issue",
         "Provides executable diagnostic script"
+      ],
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "My machine has OpenFOAM Foundation 13 and adjointShapeOptimisationFoam. Can I use it for pressure-loss topology, CHT topology, and a Pareto pressure-temperature objective?",
+      "expected_output": "Should classify the installed Foundation 13 application as a limited legacy blockage-field total-pressure-loss route, reject boundary-displacement and thermal/Pareto overclaims, and produce an external/custom acquisition plan for missing capabilities.",
+      "assertions": [
+        "Calls the design variable a blockage field rather than boundary displacement",
+        "Limits the native objective to total pressure loss",
+        "Does not claim native thermal or CHT adjoint capability",
+        "Does not describe a weighted sum as a Pareto front",
+        "Produces solver_requirement_report with installed and missing capabilities",
+        "Routes CHT topology to a thermal primal plus external optimiser or custom thermal adjoint",
+        "Distinguishes Foundation and OpenCFD dictionaries and environments"
       ],
       "files": []
     }

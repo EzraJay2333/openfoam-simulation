@@ -381,8 +381,9 @@
 
 <script type="importmap">
 { "imports": {
-  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  "three": "/static/vendor/three.module.js",
+  "three/addons/controls/OrbitControls.js": "/static/vendor/OrbitControls.js",
+  "three/addons/loaders/GLTFLoader.js": "/static/vendor/GLTFLoader.js"
 }}
 </script>
 
@@ -768,19 +769,39 @@ function clearHighlights() {
 }
 
 function updateAllHighlights() {
-  clearHighlights();
-  if (S.selectedFaces.size > 0) {
-    highlightFaceGroups(S.selectedFaces, 0x00ff66);
-  }
-  const bndGroups = {};
-  for (const [faceId, bnd] of Object.entries(S.boundaries)) {
-    if (S.selectedFaces.has(parseInt(faceId))) continue;
-    const c = getBoundaryColor(bnd.type);
-    if (!bndGroups[c]) bndGroups[c] = new Set();
-    bndGroups[c].add(parseInt(faceId));
-  }
-  for (const [color, fids] of Object.entries(bndGroups)) {
-    highlightFaceGroups(fids, parseInt(color));
+  applyCompositeHighlights();
+}
+
+function applyCompositeHighlights() {
+  if (!S.modelMeshes) return;
+  for (const mesh of S.modelMeshes) {
+    const geom = mesh.geometry;
+    const fgMap = geom.userData.faceGroupMap;
+    const colorAttr = geom.getAttribute('color');
+    if (!fgMap || !colorAttr) continue;
+    if (!geom.userData.origColors) geom.userData.origColors = new Float32Array(colorAttr.array);
+    colorAttr.array.set(geom.userData.origColors);
+    const indexAttr = geom.index;
+    for (let i = 0; i < fgMap.length; i++) {
+      const faceId = fgMap[i];
+      const boundary = S.boundaries[faceId];
+      const color = S.selectedFaces.has(faceId)
+        ? new THREE.Color(0x00ff66)
+        : boundary ? new THREE.Color(getBoundaryColor(boundary.type)) : null;
+      if (!color) continue;
+      const vertices = indexAttr
+        ? [indexAttr.getX(i * 3), indexAttr.getX(i * 3 + 1), indexAttr.getX(i * 3 + 2)]
+        : [i * 3, i * 3 + 1, i * 3 + 2];
+      for (const vertex of vertices) {
+        colorAttr.setXYZ(
+          vertex,
+          colorAttr.getX(vertex) * 0.35 + color.r * 0.65,
+          colorAttr.getY(vertex) * 0.35 + color.g * 0.65,
+          colorAttr.getZ(vertex) * 0.35 + color.b * 0.65
+        );
+      }
+    }
+    colorAttr.needsUpdate = true;
   }
 }
 
@@ -882,8 +903,8 @@ function clearSelection() {
   updateBoundaryForm();
 }
 
-window.toggleFaceSelectionById = function(faceId) {
-  toggleFaceSelection(faceId, event?.shiftKey ?? false);
+window.toggleFaceSelectionById = function(faceId, clickEvent) {
+  toggleFaceSelection(faceId, Boolean(clickEvent && clickEvent.shiftKey));
 };
 
 // ═══════════════════ View Presets ═══════════════════
@@ -960,7 +981,7 @@ function updateFaceList() {
 
     return `
       <div class="face-row${selected ? ' selected' : ''}"
-           onclick="window.toggleFaceSelectionById(${fg.face_id})">
+           onclick="window.toggleFaceSelectionById(${fg.face_id}, event)">
         <span class="swatch" style="background:${colorStr}"></span>
         <span class="id">#${fg.face_id}</span>
         <span class="info">${fg.face_type}</span>
@@ -1015,7 +1036,7 @@ function updateAssignedList() {
       <div class="bnd-item">
         <span class="dot" style="background:${getBoundaryColorHex(bnd.type)}"></span>
         <span class="info">
-          <strong>${bnd.type}</strong> ${bnd.label || ''}
+          <strong>${escapeHtml(bnd.type)}</strong> ${escapeHtml(bnd.label || '')}
           <span style="color:var(--text-dim);font-size:11px;"> Face #${faceId}</span>
         </span>
         <span style="color:var(--text-dim);font-size:11px;flex-shrink:0;">${area} m²</span>
@@ -1117,6 +1138,12 @@ function toast(msg, type) {
   el._timeout = setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
 // ═══════════════════ File Upload ═══════════════════
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
@@ -1190,7 +1217,7 @@ function renderModelList(models) {
     return `
       <div class="model-item${active}" onclick="loadExistingModel('${m.model_id}')">
         <span class="info">
-          <div class="name" title="${m.file_name}">${m.file_name}</div>
+          <div class="name" title="${escapeHtml(m.file_name)}">${escapeHtml(m.file_name)}</div>
           <div class="meta">${m.face_groups} 面组 &bull; ${m.face_count.toLocaleString()} 三角面 &bull; ${ext}</div>
         </span>
         <button class="btn-del" onclick="event.stopPropagation(); deleteModel('${m.model_id}')">删除</button>

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workflow.schema.json",
+  "type": "object",
+  "required": ["workflow"],
+  "properties": {
+    "workflow": {
+      "type": "object",
+      "required": ["name", "status", "distribution", "problem_fingerprint", "support_level", "steps"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["experimental", "validated", "deprecated"]},
+        "distribution": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "problem_fingerprint": {"type": "object"},
+        "support_level": {"enum": ["native", "custom", "external", "unverified"]},
+        "steps": {"type": "array", "items": {"type": "object"}, "minItems": 1}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

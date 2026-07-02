@@ -14,17 +14,26 @@ Optimize the internal geometry of a duct, pipe bend, manifold, or channel to min
 
 ## Optimisation Approach
 
-### Shape Optimisation (Native on both distributions)
+### Boundary-Displacement Shape Optimisation
 
 The boundary shape is deformed using adjoint-computed surface sensitivities. Topology is preserved — the duct remains a connected channel.
 
-**Solver**: `adjointShapeOptimizationFoam` (Foundation) or `adjointOptimisationFoam` with shape design variables (OpenCFD v2206+).
+**Solver**: use only a version-matched solver whose installed source/tutorial exposes
+boundary-displacement design variables. Foundation 13
+`adjointShapeOptimisationFoam` does not satisfy this requirement.
 
-### Density-Based Topology Optimisation (Native on OpenCFD v2206+)
+### Foundation 13 Legacy Blockage Optimisation
+
+Foundation 13 `adjointShapeOptimisationFoam` updates a volumetric blockage field
+and minimises total pressure loss. It is a limited legacy route, not a generic shape
+or topology framework. Do not use it for thermal objectives, Pareto optimisation or
+a generic volume constraint.
+
+### Density-Based Topology Optimisation (Native on OpenCFD v2312+)
 
 A porosity field (α) is optimized in the design domain. The Brinkman penalty term drives α → 0 in solid-like regions and α → 1 in fluid regions.
 
-**Solver**: `adjointOptimisationFoam` with porosity design variables (OpenCFD v2206+).
+**Solver**: `adjointOptimisationFoam` with porosity design variables (OpenCFD v2312+).
 
 ## Required Inputs
 
@@ -60,15 +69,15 @@ A porosity field (α) is optimized in the design domain. The Brinkman penalty te
    f. Full optimisation loop
 6. **Validation** — Objective convergence, volume constraint satisfaction, mass conservation
 
-## Typical Results
+## Required Results
 
-- Pressure loss reduction: 15-40% (shape), 30-60% (topology)
-- Design iterations: 20-80
-- Key outputs: optimized geometry, objective history plot, velocity/pressure fields
+- Recomputed pressure loss on an independently meshed final geometry
+- Objective and constraint histories with units and definitions
+- Velocity/pressure fields, mass balance and mesh-independence evidence
 
 ## Known Issues
 
 - Adjoint may diverge if primal is not fully converged
 - Volume constraint may oscillate if step size is too large
 - Low-Re kOmegaSST may be needed for transitional flows
-- Foundation's adjointShapeOptimizationFoam is laminar only
+- Foundation 13 `adjointShapeOptimisationFoam` has a fixed pressure-loss blockage-field formulation

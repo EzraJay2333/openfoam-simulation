@@ -1,121 +1,80 @@
 #!/usr/bin/env bash
-# inspect_openfoam.sh — Step 2: OpenFOAM Identity Gate
-# Deep-inspects the installed OpenFOAM to determine distribution family,
-# version, available solvers, libraries, and tutorials.
-# Outputs JSON to stdout and saves to inspect_openfoam.json
+# Step 2: inspect a sourced OpenFOAM installation without jq.
+set -u
 
-set -euo pipefail
-
-output="inspect_openfoam.json"
-
-# --- Pre-check ---
-if [ -z "${WM_PROJECT_DIR:-}" ]; then
-    echo '{"error": "WM_PROJECT_DIR not set. Source OpenFOAM bashrc first."}'
+output="${1:-inspect_openfoam.json}"
+if [ -z "${WM_PROJECT_DIR:-}" ] || [ ! -d "${WM_PROJECT_DIR}" ]; then
+    printf '%s\n' '{"error":"WM_PROJECT_DIR not set. Source OpenFOAM bashrc first."}' >&2
     exit 1
 fi
 
-echo "{" > "$output"
-
-# --- Distribution Family ---
 dist_family="unknown"
-if [ -d "$WM_PROJECT_DIR/.git" ]; then
-    remote=$(cd "$WM_PROJECT_DIR" && git remote get-url origin 2>/dev/null || echo "")
-    if echo "$remote" | grep -qi "openfoam.org\|openfoam\.com\|OpenFOAM-dev\|OpenFOAM-[0-9]"; then
-        if echo "$remote" | grep -qi "openfoam\.org\|OpenFOAM-[0-9]\|OpenFOAM-dev"; then
-            # openfoam.org repos use tags like OpenFOAM-10, OpenFOAM-11, etc.
-            dist_family="openfoam.org"
-        fi
-    fi
-    if echo "$remote" | grep -qi "develop.openfoam.com\|openfoam\.com"; then
-        dist_family="openfoam.com"
-    fi
+if [ -d "$WM_PROJECT_DIR/applications/legacy" ] || grep -qi 'OpenFOAM Foundation' "$WM_PROJECT_DIR/etc/bashrc" 2>/dev/null; then
+    dist_family="openfoam_org"
+elif grep -Eqi 'OpenCFD|openfoam.com' "$WM_PROJECT_DIR/etc/bashrc" 2>/dev/null; then
+    dist_family="openfoam_com"
 fi
 
-# Fallback: check etc/bashrc or etc/config.sh for distribution markers
-if [ "$dist_family" = "unknown" ]; then
-    if [ -f "$WM_PROJECT_DIR/etc/bashrc" ]; then
-        if grep -qi "OpenFOAM Foundation\|openfoam.org" "$WM_PROJECT_DIR/etc/bashrc" 2>/dev/null; then
-            dist_family="openfoam.org"
-        elif grep -qi "OpenCFD\|ESI\|openfoam.com" "$WM_PROJECT_DIR/etc/bashrc" 2>/dev/null; then
-            dist_family="openfoam.com"
-        fi
-    fi
-fi
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 
-# Fallback: check for distribution-specific directory structures
-if [ "$dist_family" = "unknown" ]; then
-    if [ -d "$WM_PROJECT_DIR/applications/solvers/incompressible/adjointShapeOptimizationFoam" ]; then
-        # Foundation distribution has this older solver name
-        dist_family="openfoam.org"
-    elif [ -d "$WM_PROJECT_DIR/src/optimisation/adjointOptimisation" ]; then
-        # OpenCFD v2206+ has this module
-        dist_family="openfoam.com"
-    fi
-fi
-
-echo '  "distribution_family": "'"$dist_family"'",' >> "$output"
-
-# --- Version ---
-echo '  "version": "'"${WM_PROJECT_VERSION:-unknown}"'",' >> "$output"
-echo '  "build": "'"${WM_PROJECT_VERSION:-unknown}-${WM_COMPILER:-unknown}"'",' >> "$output"
-echo '  "compiler": "'"${WM_COMPILER:-unknown}"'",' >> "$output"
-echo '  "precision": "'"${WM_PRECISION_OPTION:-DP}"'",' >> "$output"
-echo '  "label_size": "'"${WM_LABEL_SIZE:-32}"'",' >> "$output"
-
-# --- Installation paths ---
-echo '  "install_root": "'"$WM_PROJECT_DIR"'",' >> "$output"
-echo '  "etc_dir": "'"$WM_PROJECT_DIR/etc"'",' >> "$output"
-echo '  "tutorials_dir": "'"${FOAM_TUTORIALS:-$WM_PROJECT_DIR/tutorials}"'",' >> "$output"
-echo '  "src_dir": "'"$WM_PROJECT_DIR/src"'",' >> "$output"
-echo '  "app_dir": "'"$WM_PROJECT_DIR/applications"'",' >> "$output"
-
-# --- Available solver applications ---
-solver_list="[]"
 if [ -n "${FOAM_APPBIN:-}" ] && [ -d "$FOAM_APPBIN" ]; then
-    solver_list=$(ls "$FOAM_APPBIN"/ 2>/dev/null | grep -i "foam$" | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
+    find "$FOAM_APPBIN" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort > "$tmp/binaries"
+else
+    : > "$tmp/binaries"
 fi
-echo '  ,"available_solvers": '"$solver_list"'' >> "$output"
-
-# --- Adjoint/Optimisation capabilities ---
-adjoint_solvers=$(echo "$solver_list" | jq -r '.[]' | grep -i "adjoint\|optim" 2>/dev/null || echo "")
-echo '  ,"adjoint_solvers_found": '"$(echo "$adjoint_solvers" | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')"'' >> "$output"
-
-# --- Available tutorials ---
-adjoint_tutorials="[]"
+find "$WM_PROJECT_DIR/applications" -type d \( -iname '*adjoint*' -o -iname '*optimisation*' -o -iname '*optimization*' \) 2>/dev/null | sort > "$tmp/sources"
 if [ -n "${FOAM_TUTORIALS:-}" ] && [ -d "$FOAM_TUTORIALS" ]; then
-    adjoint_tutorials=$(find "$FOAM_TUTORIALS" -maxdepth 4 -type d \( -iname "*adjoint*" -o -iname "*optim*" -o -iname "*topology*" \) 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
+    find "$FOAM_TUTORIALS" -type d \( -iname '*adjoint*' -o -iname '*optimisation*' -o -iname '*optimization*' \) 2>/dev/null | sort > "$tmp/tutorials"
+else
+    : > "$tmp/tutorials"
 fi
-echo '  ,"adjoint_tutorial_dirs": '"$adjoint_tutorials"'' >> "$output"
 
-# --- Function objects ---
-function_objects="[]"
-if [ -n "${FOAM_LIBBIN:-}" ]; then
-    function_objects=$(find "$FOAM_LIBBIN" -name "lib*functionObjects*" -o -name "lib*forces*" 2>/dev/null | xargs -I{} basename {} 2>/dev/null | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))' || echo "[]")
+export OF_INSPECT_DIST="$dist_family"
+python3 - "$output" "$tmp/binaries" "$tmp/sources" "$tmp/tutorials" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+def lines(path):
+    return [line for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines() if line]
+
+binaries = lines(sys.argv[2])
+sources = lines(sys.argv[3])
+tutorials = lines(sys.argv[4])
+aliases = (
+    "adjointShapeOptimisationFoam", "adjointShapeOptimizationFoam",
+    "adjointOptimisationFoam", "adjointOptimizationFoam",
+)
+apps = {}
+for name in aliases:
+    binary = next((item for item in binaries if item == name), None)
+    source = next((item for item in sources if pathlib.Path(item).name == name), None)
+    apps[name] = {
+        "availability": "binary" if binary else "source_only" if source else "missing",
+        "binary": binary,
+        "source": source,
+    }
+data = {
+    "schema_version": "2.0",
+    "distribution_family": os.environ["OF_INSPECT_DIST"],
+    "version": os.environ.get("WM_PROJECT_VERSION", "unknown"),
+    "compiler": os.environ.get("WM_COMPILER", "unknown"),
+    "precision": os.environ.get("WM_PRECISION_OPTION", "DP"),
+    "label_size": os.environ.get("WM_LABEL_SIZE", "32"),
+    "install_root": os.environ["WM_PROJECT_DIR"],
+    "available_applications": binaries,
+    "optimisation_applications": apps,
+    "optimisation_source_dirs": sources,
+    "optimisation_tutorial_dirs": tutorials,
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as handle:
+    json.dump(data, handle, indent=2, ensure_ascii=False)
+    handle.write("\n")
+print(json.dumps(data, indent=2, ensure_ascii=False))
+PY
+
+if [ "$dist_family" = unknown ]; then
+    exit 2
 fi
-echo '  ,"function_object_libraries": '"$function_objects"'' >> "$output"
-
-# --- bashrc/environment script path ---
-bashrc_path="unknown"
-for candidate in "$WM_PROJECT_DIR/etc/bashrc" "/opt/openfoam"*"/etc/bashrc" "/usr/lib/openfoam/openfoam"*"/etc/bashrc"; do
-    if [ -f "$candidate" ]; then
-        bashrc_path="$candidate"
-        break
-    fi
-done
-echo '  ,"bashrc_path": "'"$bashrc_path"'"' >> "$output"
-
-echo "}" >> "$output"
-
-# --- Summary ---
-echo ""
-echo "=== OpenFOAM Identity ==="
-echo "Distribution: $dist_family"
-echo "Version: ${WM_PROJECT_VERSION:-unknown}"
-echo "Precision: ${WM_PRECISION_OPTION:-DP}"
-echo "Label size: ${WM_LABEL_SIZE:-32}-bit"
-echo "Solver count: $(echo "$solver_list" | jq 'length')"
-echo "Adjoint solvers: $(echo "$adjoint_solvers" | tr '\n' ' ')"
-echo ""
-echo "Full output: $output"
-
-exit 0

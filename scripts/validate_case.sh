@@ -1,136 +1,92 @@
 #!/usr/bin/env bash
-# validate_case.sh — Step 8: Case Structure and Dictionary Validation
-# Usage: validate_case.sh <case_directory>
-# Validates that an OpenFOAM case has correct structure, parsable dictionaries,
-# and consistent boundary conditions.
+# Step 9: validate case structure, dictionaries and patch coverage.
+set -u
 
-set -euo pipefail
-
-CASE_DIR="${1:-.}"
-
-if [ ! -d "$CASE_DIR" ]; then
-    echo '{"error": "Case directory not found: '"$CASE_DIR"'"}'
+case_dir="${1:-.}"
+output="${2:-case_validation.json}"
+if [ ! -d "$case_dir" ]; then
+    printf '{"error":"Case directory not found: %s"}\n' "$case_dir" >&2
     exit 1
 fi
-
-cd "$CASE_DIR"
-
-output="case_validation.json"
-echo "{" > "$output"
-echo '  "case_directory": "'"$(realpath "$CASE_DIR")"'",' >> "$output"
-
-# --- Required directories ---
-checks="{}"
-
-has_0=false
-has_constant=false
-has_system=false
-
-[ -d "0" ] && has_0=true
-[ -d "constant" ] && has_constant=true
-[ -d "system" ] && has_system=true
-
-echo '  "directories": {' >> "$output"
-echo '    "0": '"$has_0"',' >> "$output"
-echo '    "constant": '"$has_constant"',' >> "$output"
-echo '    "system": '"$has_system"'' >> "$output"
-echo '  },' >> "$output"
-
-all_dirs_ok=true
-if [ "$has_0" != true ] || [ "$has_constant" != true ] || [ "$has_system" != true ]; then
-    all_dirs_ok=false
+if ! command -v foamDictionary >/dev/null 2>&1; then
+    printf '%s\n' '{"error":"foamDictionary not found; source OpenFOAM bashrc first."}' >&2
+    exit 2
 fi
 
-# --- PolyMesh ---
-has_polymesh=false
-if [ -d "constant/polyMesh" ] && [ -f "constant/polyMesh/boundary" ]; then
-    has_polymesh=true
-fi
-echo '  "polymesh": '"$has_polymesh"',' >> "$output"
+case_dir="$(realpath "$case_dir")"
+errors_file="$(mktemp)"
+patches_file="$(mktemp)"
+trap 'rm -f "$errors_file" "$patches_file"' EXIT
 
-# --- Dictionary syntax check ---
-dict_errors="[]"
-for d in system/* 0/* constant/*; do
-    if [ -f "$d" ]; then
-        if ! foamDictionary -expand "$d" > /dev/null 2>&1; then
-            err=$(foamDictionary -expand "$d" 2>&1 | head -5)
-            dict_errors=$(echo "$dict_errors" | jq -c '. + [{"file": "'"$d"'", "error": "'"$(echo "$err" | tr '\n' ' ' | sed 's/"/\\"/g")"'"}]')
-        fi
+while IFS= read -r -d '' dictionary; do
+    if ! message="$(foamDictionary -expand "$dictionary" 2>&1 >/dev/null)"; then
+        printf '%s\t%s\n' "${dictionary#$case_dir/}" "${message//$'\n'/ }" >> "$errors_file"
     fi
-done 2>/dev/null || true
-echo '  "dictionary_errors": '"$dict_errors"',' >> "$output"
+done < <(find "$case_dir/0" "$case_dir/constant" "$case_dir/system" -maxdepth 1 -type f -print0 2>/dev/null)
 
-# --- Required files check ---
-required_files="[]"
-if [ -f "system/controlDict" ]; then
-    required_files=$(echo "$required_files" | jq -c '. + ["controlDict: found"]')
-else
-    required_files=$(echo "$required_files" | jq -c '. + ["controlDict: MISSING"]')
-fi
-if [ -f "system/fvSchemes" ]; then
-    required_files=$(echo "$required_files" | jq -c '. + ["fvSchemes: found"]')
-else
-    required_files=$(echo "$required_files" | jq -c '. + ["fvSchemes: MISSING"]')
-fi
-if [ -f "system/fvSolution" ]; then
-    required_files=$(echo "$required_files" | jq -c '. + ["fvSolution: found"]')
-else
-    required_files=$(echo "$required_files" | jq -c '. + ["fvSolution: MISSING"]')
-fi
-if [ -f "constant/transportProperties" ] || [ -f "constant/physicalProperties" ]; then
-    required_files=$(echo "$required_files" | jq -c '. + ["transportProperties: found"]')
-else
-    required_files=$(echo "$required_files" | jq -c '. + ["transportProperties: MISSING"]')
+if [ -d "$case_dir/0" ]; then
+    for field in "$case_dir"/0/*; do
+        if [ -f "$field" ]; then
+            patch_list="$(foamDictionary -entry boundaryField -keywords "$field" 2>/dev/null | paste -sd, -)"
+            printf '%s\t%s\n' "$(basename "$field")" "$patch_list" >> "$patches_file"
+        fi
+    done
 fi
 
-echo '  "required_files": '"$required_files"',' >> "$output"
+python3 - "$case_dir" "$errors_file" "$patches_file" "$output" <<'PY'
+import json
+import pathlib
+import re
+import sys
 
-# --- Boundary condition presence check ---
-bc_check="{}"
-if [ -f "0/U" ]; then
-    patches=$(foamDictionary -entry boundaryField -value 0/U 2>/dev/null | grep -oP '^\s*\K\w+' || echo "")
-    bc_check=$(echo "$bc_check" | jq -c '. + {"U": {"patches": "'"$(echo "$patches" | tr '\n' ' ')"'"}}')
-fi
-if [ -f "0/p" ] || [ -f "0/p_rgh" ]; then
-    p_file="0/p"
-    [ -f "0/p_rgh" ] && p_file="0/p_rgh"
-    patches=$(foamDictionary -entry boundaryField -value "$p_file" 2>/dev/null | grep -oP '^\s*\K\w+' || echo "")
-    bc_check=$(echo "$bc_check" | jq -c '. + {"p": {"patches": "'"$(echo "$patches" | tr '\n' ' ')"'"}}')
-fi
-echo '  "boundary_conditions_summary": '"$bc_check"',' >> "$output"
+case = pathlib.Path(sys.argv[1])
+errors = []
+for line in pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
+    name, _, message = line.partition("\t")
+    errors.append({"file": name, "error": message})
 
-# --- Overall result ---
-dict_ok=false
-if [ "$dict_errors" = "[]" ]; then
-    dict_ok=true
-fi
+directories = {name: (case / name).is_dir() for name in ("0", "constant", "system")}
+required_names = ("system/controlDict", "system/fvSchemes", "system/fvSolution")
+required = {name: (case / name).is_file() for name in required_names}
+required["constant/physicalProperties_or_transportProperties"] = (
+    (case / "constant/physicalProperties").is_file() or (case / "constant/transportProperties").is_file()
+)
+boundary_file = case / "constant/polyMesh/boundary"
+mesh_patches = set()
+if boundary_file.is_file():
+    text = boundary_file.read_text(encoding="utf-8", errors="replace")
+    mesh_patches = set(re.findall(r"(?m)^\s{4}([A-Za-z_][\w.-]*)\s*$", text))
 
-all_ok=false
-if [ "$all_dirs_ok" = true ] && [ "$dict_ok" = true ]; then
-    all_ok=true
-fi
+field_patches = {}
+for line in pathlib.Path(sys.argv[3]).read_text(encoding="utf-8").splitlines():
+    field, _, raw_patches = line.partition("\t")
+    field_patches[field] = sorted(item for item in raw_patches.split(",") if item)
 
-echo '  "all_dirs_present": '"$all_dirs_ok"',' >> "$output"
-echo '  "all_dicts_valid": '"$dict_ok"',' >> "$output"
-echo '  "overall_valid": '"$all_ok"'' >> "$output"
+mismatches = {}
+if mesh_patches:
+    for field, patches in field_patches.items():
+        missing = sorted(mesh_patches - set(patches))
+        extra = sorted(set(patches) - mesh_patches)
+        if missing or extra:
+            mismatches[field] = {"missing": missing, "extra": extra}
 
-echo "}" >> "$output"
-
-# --- Summary ---
-echo ""
-echo "=== Case Validation: $(basename "$(realpath "$CASE_DIR")") ==="
-echo "Directories: 0/=$has_0 constant/=$has_constant system/=$has_system"
-echo "polyMesh: $has_polymesh"
-echo "Dictionary errors: $(echo "$dict_errors" | jq 'length')"
-if [ "$dict_errors" != "[]" ]; then
-    echo "  $(echo "$dict_errors" | jq -r '.[] | "\(.file): \(.error)"')"
-fi
-echo "Required files: $(echo "$required_files" | jq -r '.[]')"
-echo "Overall valid: $all_ok"
-echo ""
-echo "Full output: $output"
-
-if [ "$all_ok" != true ]; then
-    exit 1
-fi
-exit 0
+ok = all(directories.values()) and all(required.values()) and not errors and not mismatches
+data = {
+    "schema_version": "2.0",
+    "case_directory": str(case),
+    "directories": directories,
+    "polymesh": boundary_file.is_file(),
+    "required_files": required,
+    "dictionary_errors": errors,
+    "mesh_patches": sorted(mesh_patches),
+    "field_patches": field_patches,
+    "boundary_mismatches": mismatches,
+    "overall_valid": ok,
+}
+output = pathlib.Path(sys.argv[4])
+if not output.is_absolute():
+    output = case / output
+output.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+print(json.dumps(data, indent=2, ensure_ascii=False))
+raise SystemExit(0 if ok else 1)
+PY
