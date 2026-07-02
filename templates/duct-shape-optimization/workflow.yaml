@@ -1,21 +1,22 @@
 workflow:
   name: "duct-shape-optimization"
-  status: validated
+  status: experimental
   distribution:
     - "openfoam.org:10"
     - "openfoam.com:2206"
   problem_fingerprint:
     flow_regime: [steady, incompressible]
-    physics: [single-phase, isothermal]
+    physics: [single_phase, isothermal]
     geometry_class: [internal]
-    spatial_dimensions: [2d-planar, 2d-axisymmetric, 3d]
+    spatial_dimensions: [2d_planar, 2d_axisymmetric, 3d]
     optimisation_family: [shape]
-    objectives: [pressure-loss, uniformity]
+    objectives: [pressure_loss, uniformity]
     constraints: [volume]
-    design_variables: [boundary-displacement]
-  support_level: native
+    design_variables: [boundary_displacement]
+  support_level: unverified
   prerequisites:
-    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "OpenCFD v1906+ adjointOptimisationFoam with exact-version boundary-displacement tutorial/source evidence"
+    - "Foundation solver accepted only when the installed source/tutorial proves boundary-displacement design variables; Foundation 13 legacy blockage optimisation does not qualify"
     - "blockMesh with grading for near-wall refinement"
   steps:
     - stage: environment
@@ -34,8 +35,8 @@ workflow:
       description: "Compare pressure loss, flow uniformity vs baseline"
   known_issues:
     - "Mesh morphing may produce negative volumes in tight bends"
-    - "Foundation solver is laminar-only; results less accurate for turbulent Re"
+    - "Foundation capability is release-specific; Foundation 13 legacy blockage optimisation is not valid for this boundary-displacement workflow"
     - "Curvature regularization may be needed for manufacturable shapes"
   references:
     - "Giannakoglou et al. (2006) - Adjoint methods for duct shape optimization"
-    - "OpenFOAM tutorial: incompressible/adjointShapeOptimizationFoam/pitzDaily"
+    - "Installed, exact-version shape-optimisation tutorial selected during the documentation gate"

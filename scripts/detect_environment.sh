@@ -1,117 +1,87 @@
 #!/usr/bin/env bash
-# detect_environment.sh — Step 1: Environment Gate
-# Outputs JSON describing the host OS, WSL status, and OpenFOAM env status.
-# The skill reads this output to determine whether to proceed.
+# Step 1: detect Linux/WSL, MPI, Python and sourced OpenFOAM state.
+set -u
 
-set -euo pipefail
-
-output="detected_environment.json"
-
-echo "{" > "$output"
-
-# --- Host OS ---
-echo '  "host_os": "'"$(uname -s)"'",' >> "$output"
-echo '  "host_kernel": "'"$(uname -r)"'",' >> "$output"
-echo '  "architecture": "'"$(uname -m)"'",' >> "$output"
-
-# --- WSL Detection ---
+output="${1:-detected_environment.json}"
 is_wsl=false
 wsl_version="none"
 if grep -qi microsoft /proc/version 2>/dev/null; then
     is_wsl=true
-    if grep -qi "wsl2" /proc/version 2>/dev/null; then
-        wsl_version="2"
-    else
-        wsl_version="1"
-    fi
+    wsl_version="2"
 fi
-echo '  "is_wsl": '"$is_wsl"',' >> "$output"
-echo '  "wsl_version": "'"$wsl_version"'",' >> "$output"
 
-# --- Shell ---
-echo '  "shell": "'"$(basename "$SHELL" 2>/dev/null || echo "unknown")"'",' >> "$output"
-
-# --- MPI ---
 mpi_available=false
-mpi_flavors="[]"
-if command -v mpirun &>/dev/null; then
+mpi_info=""
+if command -v mpirun >/dev/null 2>&1; then
     mpi_available=true
-    mpi_info=$(mpirun --version 2>&1 | head -1 || echo "unknown")
-    mpi_flavors="[\"$(echo "$mpi_info" | tr '"' "'")\"]"
+    mpi_info="$(mpirun --version 2>&1 | head -n 1)"
 fi
-echo '  "mpi_available": '"$mpi_available"',' >> "$output"
-echo '  "mpi_flavors": '"$mpi_flavors"',' >> "$output"
 
-# --- OpenFOAM Environment ---
 of_env_loaded=false
-WM_PROJECT_DIR="${WM_PROJECT_DIR:-}"
-WM_PROJECT_VERSION="${WM_PROJECT_VERSION:-}"
-WM_OPTIONS="${WM_OPTIONS:-}"
-FOAM_APPBIN="${FOAM_APPBIN:-}"
-FOAM_LIBBIN="${FOAM_LIBBIN:-}"
-
-if [ -n "$WM_PROJECT_DIR" ] && [ -d "$WM_PROJECT_DIR" ]; then
+if [ -n "${WM_PROJECT_DIR:-}" ] && [ -d "${WM_PROJECT_DIR}" ]; then
     of_env_loaded=true
 fi
 
-echo '  "of_env_loaded": '"$of_env_loaded"',' >> "$output"
-echo '  "WM_PROJECT_DIR": "'"$WM_PROJECT_DIR"'",' >> "$output"
-echo '  "WM_PROJECT_VERSION": "'"$WM_PROJECT_VERSION"'",' >> "$output"
-echo '  "WM_OPTIONS": "'"$WM_OPTIONS"'",' >> "$output"
-echo '  "FOAM_APPBIN": "'"$FOAM_APPBIN"'",' >> "$output"
-echo '  "FOAM_LIBBIN": "'"$FOAM_LIBBIN"'",' >> "$output"
-
-# --- Python ---
-python_version=$(python3 --version 2>&1 || echo "not found")
-echo '  "python_version": "'"$python_version"'",' >> "$output"
-
-python_packages="{}"
-if command -v python3 &>/dev/null; then
-    numpy_ver=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "missing")
-    mpl_ver=$(python3 -c "import matplotlib; print(matplotlib.__version__)" 2>/dev/null || echo "missing")
-    python_packages="{\"numpy\": \"$numpy_ver\", \"matplotlib\": \"$mpl_ver\"}"
-fi
-echo '  "required_python_packages": '"$python_packages"',' >> "$output"
-
-# --- Distribution Detection (Linux distro) ---
 distro="unknown"
 distro_version="unknown"
-if [ -f /etc/os-release ]; then
-    distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
-    distro_version=$(grep "^VERSION_ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+if [ -r /etc/os-release ]; then
+    distro="$(. /etc/os-release; printf '%s' "${ID:-unknown}")"
+    distro_version="$(. /etc/os-release; printf '%s' "${VERSION_ID:-unknown}")"
 fi
-echo '  "linux_distribution": "'"$distro"'",' >> "$output"
-echo '  "linux_distribution_version": "'"$distro_version"'"' >> "$output"
 
-echo "}" >> "$output"
+export OF_DETECT_HOST_OS="$(uname -s)"
+export OF_DETECT_HOST_KERNEL="$(uname -r)"
+export OF_DETECT_ARCH="$(uname -m)"
+export OF_DETECT_IS_WSL="$is_wsl"
+export OF_DETECT_WSL_VERSION="$wsl_version"
+export OF_DETECT_SHELL="$(basename "${SHELL:-unknown}")"
+export OF_DETECT_MPI="$mpi_available"
+export OF_DETECT_MPI_INFO="$mpi_info"
+export OF_DETECT_LOADED="$of_env_loaded"
+export OF_DETECT_DISTRO="$distro"
+export OF_DETECT_DISTRO_VERSION="$distro_version"
 
-# --- Summary ---
-echo ""
-echo "=== Environment Detection Summary ==="
-echo "Host: $(uname -s) $(uname -r) ($(uname -m))"
-echo "WSL: $is_wsl (v$wsl_version)"
-echo "Linux: $distro $distro_version"
-echo "Shell: $(basename "$SHELL" 2>/dev/null || echo unknown)"
-echo "MPI: $mpi_available ($mpi_info 2>/dev/null || echo)"
-echo "OpenFOAM env: $of_env_loaded"
-if [ "$of_env_loaded" = true ]; then
-    echo "  WM_PROJECT_DIR: $WM_PROJECT_DIR"
-    echo "  WM_PROJECT_VERSION: $WM_PROJECT_VERSION"
-    echo "  WM_OPTIONS: $WM_OPTIONS"
-fi
-echo "Python: $python_version"
-echo "  numpy: $(echo "$python_packages" | grep -o '"numpy": "[^"]*"' | cut -d'"' -f4)"
-echo "  matplotlib: $(echo "$python_packages" | grep -o '"matplotlib": "[^"]*"' | cut -d'"' -f4)"
-echo ""
-echo "Full output: $output"
+python3 - "$output" <<'PY'
+import importlib.metadata
+import json
+import os
+import platform
+import sys
 
-# Exit with appropriate code
+def package_version(name):
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "missing"
+
+data = {
+    "schema_version": "2.0",
+    "host_os": os.environ["OF_DETECT_HOST_OS"],
+    "host_kernel": os.environ["OF_DETECT_HOST_KERNEL"],
+    "architecture": os.environ["OF_DETECT_ARCH"],
+    "is_wsl": os.environ["OF_DETECT_IS_WSL"] == "true",
+    "wsl_version": os.environ["OF_DETECT_WSL_VERSION"],
+    "shell": os.environ["OF_DETECT_SHELL"],
+    "mpi_available": os.environ["OF_DETECT_MPI"] == "true",
+    "mpi_flavors": [os.environ["OF_DETECT_MPI_INFO"]] if os.environ["OF_DETECT_MPI_INFO"] else [],
+    "of_env_loaded": os.environ["OF_DETECT_LOADED"] == "true",
+    "WM_PROJECT_DIR": os.environ.get("WM_PROJECT_DIR", ""),
+    "WM_PROJECT_VERSION": os.environ.get("WM_PROJECT_VERSION", ""),
+    "WM_OPTIONS": os.environ.get("WM_OPTIONS", ""),
+    "FOAM_APPBIN": os.environ.get("FOAM_APPBIN", ""),
+    "FOAM_LIBBIN": os.environ.get("FOAM_LIBBIN", ""),
+    "python_version": platform.python_version(),
+    "required_python_packages": {"numpy": package_version("numpy"), "matplotlib": package_version("matplotlib")},
+    "linux_distribution": os.environ["OF_DETECT_DISTRO"],
+    "linux_distribution_version": os.environ["OF_DETECT_DISTRO_VERSION"],
+}
+with open(sys.argv[1], "w", encoding="utf-8", newline="\n") as handle:
+    json.dump(data, handle, indent=2, ensure_ascii=False)
+    handle.write("\n")
+print(json.dumps(data, indent=2, ensure_ascii=False))
+PY
+
 if [ "$of_env_loaded" != true ]; then
-    echo "WARNING: OpenFOAM environment not loaded."
-    echo "  Source your OpenFOAM bashrc, e.g.:"
-    echo "    source /opt/openfoam2312/etc/bashrc"
-    echo "    source /usr/lib/openfoam/openfoam2312/etc/bashrc"
+    printf '%s\n' "WARNING: OpenFOAM environment not loaded." >&2
     exit 1
 fi
-
-exit 0

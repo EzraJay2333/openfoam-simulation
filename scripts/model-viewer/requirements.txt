@@ -6,11 +6,11 @@ trimesh>=4.0.0
 numpy>=1.20.0
 fastapi>=0.100.0
 uvicorn>=0.20.0
+python-multipart>=0.0.9
 
 # STEP file support (choose one):
 #   Windows: cascadio
 #   Linux/WSL: gmsh (pip install gmsh  OR  sudo apt install gmsh && pip install gmsh)
 #   Cross-platform alternative: cadquery
 
-# gradio (optional, for gradio mode)
-gradio>=4.0.0
+# Gradio is optional; install requirements-gradio.txt for that mode.

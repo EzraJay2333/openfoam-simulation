@@ -18,7 +18,10 @@ Optimize the shape of internal flow passages — bends, diffusers, nozzles, cont
 
 The duct wall boundaries are parameterized (typically via control points or free-form deformation) and deformed using adjoint surface sensitivities.
 
-**Solver**: `adjointShapeOptimizationFoam` (Foundation) or `adjointOptimisationFoam` (OpenCFD v2206+).
+**Solver**: `adjointOptimisationFoam` with exact-version boundary-displacement
+evidence (OpenCFD v1906+), or a Foundation solver only when installed
+source/tutorial evidence proves true boundary displacement. Foundation 13
+`adjointShapeOptimisationFoam` is not such a solver.
 
 ### Multi-Objective Variant
 
@@ -61,7 +64,7 @@ where `J_uniformity` can be defined as the standard deviation of outlet velocity
 - **Mesh quality during morphing**: The bend region sees the largest displacement; ensure sufficient mesh resolution and avoid negative volumes
 - **Curvature constraints**: Unconstrained optimization may create non-manufacturable shapes; consider adding curvature regularization
 - **Flow separation**: Optimized shapes may eliminate or reduce separation zones in sharp bends
-- **Laminar vs turbulent**: Foundation's solver is laminar-only; for Re > 2300, use OpenCFD with turbulence or accept the laminar approximation
+- **Laminar vs turbulent**: choose only an installed solver whose adjoint turbulence treatment is documented for the target release
 
 ## Typical Results
 
@@ -73,4 +76,4 @@ where `J_uniformity` can be defined as the standard deviation of outlet velocity
 
 - Adjoint gradients are inaccurate in separated flow regions (if using frozen turbulence)
 - Mesh morphing in tight bends may produce invalid cells
-- Foundation solver (laminar) may give optimistic pressure loss predictions vs experimental RANS
+- Foundation 13 legacy blockage optimisation must not be substituted for this boundary-displacement workflow

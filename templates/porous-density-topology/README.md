@@ -2,23 +2,22 @@
 
 ## Problem Class
 
-Optimize the material distribution (fluid vs solid) within a design domain to minimize flow resistance, dissipated power, or maximize heat transfer. A scalar porosity/impermeability field (α) is the design variable. The Brinkman penalty term in the momentum equation drives the field toward a binary fluid-solid partition.
+Optimize a mono-fluid, isothermal porosity/impermeability field within a design domain to minimize flow resistance or improve flow uniformity. Thermal and CHT topology are deliberately excluded from this native template.
 
 ## Typical Applications
 
-- Heat sink / cold plate channel topology
 - Micro-fluidic network design
 - Flow manifold / distributor optimization (e.g., fuel cells, batteries)
-- Internal cooling channel design
+- Isothermal internal channel design
 - Fluid diode / Tesla valve design
 
 ## Optimisation Approach
 
-### Density-Based Topology Optimisation (Native on OpenCFD v2206+)
+### Density-Based Topology Optimisation (Native on OpenCFD v2312+)
 
-A scalar field α ∈ [0, 1] (or [0, α_max]) defines material distribution:
-- α = 1: Pure fluid (no penalty)
-- α = 0: Solid (maximum Brinkman penalty → U ≈ 0)
+A solver-specific scalar design field defines the fluid/solid interpolation. Do not
+assume whether zero or one represents fluid: verify the exact OpenCFD release's
+tutorial and interpolation function before creating fields.
 
 The Brinkman term in the momentum equation is:
 
@@ -28,7 +27,7 @@ The Brinkman term in the momentum equation is:
 
 where large α values approximate solid regions.
 
-**Solver**: `adjointOptimisationFoam` with porosity design variables (OpenCFD v2206+).
+**Solver**: `adjointOptimisationFoam` with porosity design variables (OpenCFD v2312+).
 
 **Required components**:
 - Porosity field initialization (uniform α=1, all fluid)
@@ -40,7 +39,7 @@ where large α values approximate solid regions.
 
 ### External Optimisation Variant
 
-For Foundation distribution or older OpenCFD versions, use `porousSimpleFoam` as the primal solver with an external optimizer (SciPy, pyOpt, DAKOTA):
+For Foundation distribution or older OpenCFD versions, use `porousSimpleFoam` as the primal solver with an external optimizer (SciPy, pyOptSparse, DAKOTA):
 
 1. SciPy optimizer proposes α field
 2. OpenFOAM evaluates primal (porousSimpleFoam)
@@ -60,7 +59,6 @@ Status: `external` support level.
 | Volume fraction constraint | 0.4 (max 40% solid) | - |
 | Filter radius | 0.002 (≥ 2× cell size) | m |
 | Regularisation parameters | Helmholtz filter, Heaviside sharpness | - |
-| Thermal properties (if CHT) | k_solid, k_fluid, cp | W/(m·K), J/(kg·K) |
 
 ## Workflow Steps
 
@@ -98,4 +96,6 @@ Status: `external` support level.
 - Gray (intermediate α) regions may persist; increase Heaviside sharpness or run more iterations
 - Checkerboard patterns indicate insufficient filter radius
 - Optimizer may get stuck in local minima — try different initial α fields
-- Large pressure drops in solid-like regions (α ≈ 0) can cause solver instability; clamp minimum permeability
+- Large pressure gradients in strongly penalised regions can cause solver instability; clamp permeability according to the version-matched formulation
+- Heat-transfer/CHT objectives require a separate thermal primal plus external optimiser or a custom thermal adjoint; this template must stop instead of silently enabling them
+- A weighted sum is a scalarised objective, not evidence of Pareto-front capability

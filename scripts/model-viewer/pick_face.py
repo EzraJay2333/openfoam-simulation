@@ -14,21 +14,22 @@ Usage standalone:
 
 import json
 import os
+import shutil
 import sys
+import threading
 import time
+import urllib.parse
+import urllib.request
 import uuid
 import webbrowser
-import shutil
-import threading
-import urllib.request
-import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from step_parser import parse_file, export_model_glb
-from server import TEMP_DIR, STATIC_DIR, app as fastapi_app
 import uvicorn
+from server import STATIC_DIR, TEMP_DIR, parse_model_safely, register_model_paths
+from server import app as fastapi_app
+from step_parser import export_model_glb
 
 SERVER_URL = "http://127.0.0.1:8765"
 
@@ -68,13 +69,13 @@ def pick_face(model_path: str, label: str = "请点击选择一个面", port: in
         raise FileNotFoundError(f"模型文件不存在: {model_path}")
 
     print(f"\n{'='*60}")
-    print(f"  智能体面选择工具")
+    print("  智能体面选择工具")
     print(f"  模型: {Path(model_path).name}")
     print(f"  提示: {label}")
     print(f"{'='*60}\n")
 
     # 1. Parse the model
-    summary = parse_file(model_path)
+    summary = parse_model_safely(model_path)
     model_id = summary["model_id"]
     print(f"  解析完成: {len(summary['face_groups'])} 个面组, "
           f"尺寸: {[round(v,3) for v in summary['bounding_box']['extents']]} m")
@@ -87,6 +88,11 @@ def pick_face(model_path: str, label: str = "请点击选择一个面", port: in
     fgmap_path = glb_path.replace(".glb", "_fgmap.json")
     if os.path.exists(fgmap_path):
         shutil.copy2(fgmap_path, STATIC_DIR / f"{model_id}_fgmap.json")
+    register_model_paths(
+        model_id,
+        [Path(glb_path), static_glb, STATIC_DIR / f"{model_id}_fgmap.json"],
+        summary["file_name"],
+    )
 
     # 3. Generate pick session ID
     pick_id = uuid.uuid4().hex[:12]
@@ -101,7 +107,7 @@ def pick_face(model_path: str, label: str = "请点击选择一个面", port: in
     webbrowser.open(pick_url)
 
     # 6. Poll for result via HTTP (server runs in different process)
-    print(f"  等待用户选择面...")
+    print("  等待用户选择面...")
     timeout = 300  # 5 minutes
     poll_interval = 0.5  # seconds
     elapsed = 0
@@ -134,7 +140,7 @@ def pick_face(model_path: str, label: str = "请点击选择一个面", port: in
                     })
 
                 return out
-        except Exception as e:
+        except Exception:
             # Server might not be ready yet
             pass
 

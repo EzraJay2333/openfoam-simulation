@@ -18,7 +18,10 @@ Minimize aerodynamic drag on a body in external flow by optimizing its shape. Th
 
 Boundary surface points are displaced in the surface-normal direction weighted by adjoint sensitivities. The volume/area of the body is typically constrained.
 
-**Solver**: `adjointShapeOptimizationFoam` (Foundation) or `adjointOptimisationFoam` with shape design variables (OpenCFD v2206+).
+**Solver**: `adjointOptimisationFoam` with exact-version shape and force-objective
+evidence (OpenCFD v1906+), or a Foundation solver only when its installed
+source/tutorial proves both capabilities. Foundation 13
+`adjointShapeOptimisationFoam` is a pressure-loss blockage solver and must be rejected.
 
 ### Key Differences from Internal Flow
 
@@ -42,7 +45,7 @@ Boundary surface points are displaced in the surface-normal direction weighted b
 
 ## Workflow Steps
 
-1. **Environment check** — Verify adjoint solver supports RANS (Foundation: laminar only)
+1. **Environment check** — Verify shape, force objective and turbulence-adjoint capabilities from installed evidence
 2. **Mesh generation** — snappyHexMesh with boundary layers (y+ < 1 or 30-300 with wall functions)
 3. **Baseline primal** — Converge the primal flow field
 4. **Adjoint sensitivity** — Compute surface sensitivities for drag
@@ -53,8 +56,8 @@ Boundary surface points are displaced in the surface-normal direction weighted b
 ## Key Considerations
 
 - **Mesh morphing**: Requires `morphMesh` or displacement-based approach; mesh quality degrades with large displacements
-- **Turbulence adjoint**: Foundation's `adjointShapeOptimizationFoam` does not support turbulent adjoint — it uses "frozen turbulence" (turbulence is not differentiated)
-- **OpenCFD's `adjointOptimisationFoam`** (v2206+) supports full turbulent adjoint (differentiated turbulence model)
+- **Turbulence adjoint**: never infer differentiated/frozen-turbulence behaviour from the solver name; verify the installed model and tutorial
+- **OpenCFD**: differentiated turbulence models are release-specific; verify the exact installed source before use
 - **Blockage ratio**: Domain should be large enough that far-field boundaries don't affect results
 
 ## Known Issues

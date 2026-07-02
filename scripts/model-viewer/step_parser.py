@@ -129,41 +129,30 @@ class StepModel:
             raise ValueError(f"No faces found in {self.file_path}")
 
         if isinstance(self._mesh, trimesh.Scene):
-            # Process each geometry separately to preserve CAD body boundaries
-            all_groups = []
-            geom_offsets = {}  # track face index offset for each geometry
-            face_offset = 0
-
+            # Split each body locally, concatenate once, then create groups that
+            # reference global indices in the combined mesh.
+            meshes = []
+            local_groups = []
             for gname, geom in self._mesh.geometry.items():
                 if not hasattr(geom, "faces") or len(geom.faces) == 0:
                     continue
                 print(f"  Geometry '{gname}': {len(geom.vertices)} vertices, {len(geom.faces)} faces")
                 geom.merge_vertices()
-                geom.face_normals  # compute
-                groups = self._group_faces_on_geometry(geom)
-
-                # Offset face indices to global (concatenated) coordinates
-                for fg in groups:
-                    fg.face_indices = fg.face_indices + face_offset
-                    # Store reference to the correct mesh for this group
-                    fg._mesh = geom
-
-                all_groups.extend(groups)
-                geom_offsets[gname] = (face_offset, len(geom.faces))
-                face_offset += len(geom.faces)
-
-            # Build a single combined mesh for export
-            meshes = [g for g in self._mesh.geometry.values()
-                      if hasattr(g, "faces") and len(g.faces) > 0]
+                _ = geom.face_normals
+                meshes.append(geom)
+                local_groups.append(self._split_by_sharp_edges(geom))
+            if not meshes:
+                raise ValueError("No mesh geometry found in scene")
             self._mesh = trimesh.util.concatenate(meshes)
             print(f"  Combined into {len(self._mesh.faces)} total faces")
 
-            # Update all FaceGroup mesh references to the combined mesh
-            for fg in all_groups:
-                fg._mesh = self._mesh
-
-            # Re-assign global face IDs
-            self.face_groups = sorted(all_groups, key=lambda fg: fg.area, reverse=True)
+            all_groups = []
+            face_offset = 0
+            for geom, groups in zip(meshes, local_groups):
+                for indices in groups:
+                    all_groups.append(FaceGroup(0, indices + face_offset, self._mesh))
+                face_offset += len(geom.faces)
+            self.face_groups = sorted(all_groups, key=lambda group: group.area, reverse=True)
             for i, fg in enumerate(self.face_groups):
                 fg.face_id = i
             print(f"  Total: {len(self.face_groups)} face groups across {len(meshes)} bodies")
@@ -259,53 +248,34 @@ class StepModel:
                 result.append(fg)
         return result
 
-    def _group_faces_on_geometry(self, mesh: trimesh.Trimesh) -> list[FaceGroup]:
-        """Group faces within a single geometry using connected components.
-
-        Each connected component = one CAD face candidate.
-        Tiny components (noise) are merged into nearest large component
-        with the most similar normal direction.
-        """
-        from collections import deque
-
-        adj = mesh.face_adjacency
+    @staticmethod
+    def _split_by_sharp_edges(mesh: trimesh.Trimesh, threshold_deg: float = 25.0) -> list[np.ndarray]:
+        """Return connected smooth surface groups separated by sharp edges."""
+        adjacency = mesh.face_adjacency
         n_faces = len(mesh.faces)
         normals = mesh.face_normals
+        parent = list(range(n_faces))
 
-        # Build adjacency graph
-        adj_list = [set() for _ in range(n_faces)]
-        for a, b in adj:
-            ai, bi = int(a), int(b)
-            adj_list[ai].add(bi)
-            adj_list[bi].add(ai)
+        def find(index):
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
 
-        # Find connected components
-        visited = [False] * n_faces
-        components = []
-        for i in range(n_faces):
-            if visited[i]:
-                continue
-            comp = []
-            q = deque([i])
-            visited[i] = True
-            while q:
-                v = q.popleft()
-                comp.append(v)
-                for nb in adj_list[v]:
-                    if not visited[nb]:
-                        visited[nb] = True
-                        q.append(nb)
-            components.append(comp)
+        def union(a, b):
+            a_root, b_root = find(a), find(b)
+            if a_root != b_root:
+                parent[a_root] = b_root
 
-        # Build FaceGroup objects directly from connected components.
-        # No merging — each component is a distinct CAD face.
-        groups = []
-        for comp in components:
-            indices = np.array(comp, dtype=int)
-            fg = FaceGroup(0, indices, mesh)  # temp ID, caller reassigns
-            groups.append(fg)
-
-        return groups
+        cosine = float(np.cos(np.radians(threshold_deg)))
+        for raw_a, raw_b in adjacency:
+            a, b = int(raw_a), int(raw_b)
+            if float(np.dot(normals[a], normals[b])) > cosine:
+                union(a, b)
+        groups: dict[int, list[int]] = {}
+        for index in range(n_faces):
+            groups.setdefault(find(index), []).append(index)
+        return [np.asarray(indices, dtype=int) for indices in groups.values()]
 
     def _group_faces(self, dihedral_threshold_deg: float = 25.0):
         """Group triangles by detecting sharp edges (dihedral angle > threshold).

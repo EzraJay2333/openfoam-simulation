@@ -214,4 +214,4 @@ gcc --version | head -1
 - **Always** preserve the original source — copy, don't modify in place
 - **Always** record the git commit or diff of any source changes for reproducibility
 - **Always** verify the compiled binary with `-help` before using it in a case
-- **Always** run the smoke test (Step 9c) with the compiled solver before a full run
+- **Always** run the smoke test (Step 10c) with the compiled solver before a full run

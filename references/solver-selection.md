@@ -4,6 +4,10 @@
 
 This reference guides Step 6 (Solver Capability Resolution). It describes the capability-based selection process and known solver families. Always verify availability in the installed environment — never select from memory.
 
+`registry/solvers.yaml` is the machine-readable source of truth. Tables in this file
+explain routing policy only; when they disagree with the registry or installed
+evidence, stop and report the conflict instead of choosing a solver.
+
 ## Selection Process
 
 ### Step 6a: Discover Installed Candidates
@@ -15,7 +19,7 @@ ls $FOAM_APPBIN/ | grep -i "foam$" | sort
 # List all installed solver source directories
 ls $FOAM_SOLVERS/ 2>/dev/null || ls $WM_PROJECT_DIR/applications/solvers/
 
-# Check for modular solvers (OpenCFD v2206+)
+# Check for optimisation applications and both British/American spellings
 ls $FOAM_APPBIN/ 2>/dev/null | grep -i "adjoint\|optim"
 ```
 
@@ -39,10 +43,11 @@ Map each candidate to one or more capability dimensions:
 | Compressible steady primal | `rhoSimpleFoam` |
 | Compressible transient primal | `rhoPimpleFoam` |
 | Conjugate heat transfer | `chtMultiRegionFoam` |
-| Adjoint — incompressible shape | `adjointShapeOptimizationFoam` (Foundation), `adjointOptimisationFoam` (OpenCFD) |
+| Legacy pressure-loss blockage topology | Foundation 13 `adjointShapeOptimisationFoam`; verify binary/source at runtime |
+| Adjoint — incompressible shape | Version-specific legacy spelling/source (Foundation), `adjointOptimisationFoam` (OpenCFD) |
 | Adjoint — incompressible topology | `adjointOptimisationFoam` with porous/design variables (OpenCFD) |
-| Adjoint — thermal | `adjointOptimisationFoam` with thermal objectives (OpenCFD) |
-| External optimisation | Any primal solver + external optimiser (DAKOTA, pyOpt) |
+| Adjoint — thermal/CHT topology | No default native selection; require exact-version executable, source and tutorial evidence |
+| External optimisation | Any primal solver + external optimiser (SciPy, DAKOTA, pyOptSparse) |
 | Porous media (Brinkman/Darcy) | `porousSimpleFoam` |
 | Moving/rotating mesh | `pimpleFoam` with AMI, `overPimpleDyMFoam` |
 | Multiphase | `interFoam`, `multiphaseEulerFoam` |
@@ -75,7 +80,7 @@ Pick the highest-scoring candidate. Record:
 | `pisoFoam` | Transient incompressible turbulent flow (PISO) | v1.0 | Primal solver |
 | `pimpleFoam` | Transient incompressible (PIMPLE = PISO+SIMPLE) | v1.6 | Larger timesteps |
 | `porousSimpleFoam` | Steady incompressible with porous media | v1.0 | Darcy-Forchheimer |
-| `adjointShapeOptimizationFoam` | Steady incompressible adjoint shape optimisation | v2.0 | Surface sensitivities; laminar only in older versions |
+| `adjointShapeOptimisationFoam` | Legacy steady incompressible pressure-loss optimisation | v13 spelling verified | Updates a volumetric blockage field; total-pressure-loss objective only |
 | `rhoSimpleFoam` | Steady compressible turbulent flow | v1.0 | |
 | `rhoPimpleFoam` | Transient compressible | v2.0 | |
 | `chtMultiRegionFoam` | Conjugate heat transfer (multi-region) | v2.0 | |
@@ -90,7 +95,7 @@ Pick the highest-scoring candidate. Record:
 | `simpleFoam` | Steady incompressible turbulent flow | v1.0 | Primal solver |
 | `pimpleFoam` | Transient incompressible (PIMPLE) | v1.6 | |
 | `porousSimpleFoam` | Steady incompressible with porous media | v1.0 | |
-| `adjointOptimisationFoam` | Incompressible adjoint optimisation | v2206 | Major overhaul of adjoint library; supports topology, shape, and thermal objectives |
+| `adjointOptimisationFoam` | Incompressible adjoint optimisation | v1906 | Shape capability is release-specific; mono-fluid isothermal topology is verified from v2312 |
 | `adjointShapeOptimizationFoam` | Incompressible adjoint shape optimisation (legacy) | v1912 | Present in older ESI versions; superseded by `adjointOptimisationFoam` |
 | `rhoSimpleFoam` | Steady compressible | v1.0 | |
 | `chtMultiRegionFoam` | Conjugate heat transfer | v2.0 | |
@@ -104,15 +109,15 @@ When no installed solver fully matches the problem:
 ```yaml
 capability_gap:
   problem_requirement: "topology optimization with conjugate heat transfer"
-  best_available: "adjointOptimisationFoam"
-  gap: "Thermal objective support not verified in -help output"
+  best_available: "chtMultiRegionFoam or foamMultiRun primal + external optimizer"
+  gap: "No installed, version-matched thermal adjoint topology capability"
   options:
-    - { approach: "use adjointOptimisationFoam without thermal objective",
-        risk: "may not optimize heat transfer directly" }
-    - { approach: "multi-objective with weighted cost function",
-        feasibility: "requires custom cost function compilation" }
     - { approach: "external optimizer coupling",
-        feasibility: "requires DAKOTA or pyOpt installation" }
+        feasibility: "works with an existing thermal primal; finite-difference cost grows with design-variable count" }
+    - { approach: "custom thermal adjoint",
+        feasibility: "requires user-space source development, compilation and gradient verification" }
+    - { approach: "reduce scope to isothermal topology",
+        risk: "does not optimize heat-transfer performance" }
   recommendation: "<best option with justification>"
   needs_user_confirmation: true
 ```
@@ -125,8 +130,10 @@ The same physical capability often has different solver names across distributio
 
 | Capability | Foundation (org) | OpenCFD (com) |
 |-----------|-----------------|---------------|
-| Incompressible shape adjoint | `adjointShapeOptimizationFoam` | `adjointOptimisationFoam` (v2206+) or `adjointShapeOptimizationFoam` (pre-2206) |
-| Topology (porosity) adjoint | Not natively available | `adjointOptimisationFoam` (v2206+) |
-| Thermal adjoint | Not natively available | `adjointOptimisationFoam` (v2206+) with thermal objectives |
+| Legacy blockage-field pressure-loss optimisation | Foundation 13 `adjointShapeOptimisationFoam` | Not a cross-distribution substitute |
+| Incompressible shape adjoint | Version-specific; require local source/tutorial evidence | `adjointOptimisationFoam` (v1906+, release-specific) |
+| General topology (porosity/level-set) adjoint | Not natively available as a general framework | `adjointOptimisationFoam` (mono-fluid isothermal, verified from v2312+) |
+| Thermal/CHT adjoint | Not natively available | Unverified; require installed source, help, tutorial, and version-matched official evidence |
+| Pareto multi-objective | External optimiser required | External optimiser required unless exact-version native evidence proves otherwise |
 
 **Rule**: The mapping table is informational only. Always verify with the installed `-help` output. A solver name from the wrong distribution is not a substitute.

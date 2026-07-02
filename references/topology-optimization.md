@@ -18,8 +18,10 @@ This reference guides topology and shape optimisation workflows. It defines the 
 - Best for: duct bend shape, wing profile, diffuser contour
 
 **OpenFOAM support**:
-- Foundation: `adjointShapeOptimizationFoam` (laminar, steady)
-- OpenCFD: `adjointOptimisationFoam` with `shape` design variables (v2206+)
+- Foundation: version-specific only. Foundation 13
+  `adjointShapeOptimisationFoam` is not a boundary-displacement solver; it updates a
+  volumetric blockage field for total-pressure-loss minimisation.
+- OpenCFD: `adjointOptimisationFoam` with version-matched shape design variables (v1906+; capabilities vary by release)
 
 **Typical workflow**:
 1. Run primal solver to convergence
@@ -30,7 +32,7 @@ This reference guides topology and shape optimisation workflows. It defines the 
 
 ### Density/Porosity Topology Optimisation
 
-**Definition**: A distributed scalar design field (α, ranging [0,1] or [0,∞)) penalizes flow through solid-like regions via Darcy or Brinkman terms. The interface between fluid (α=1) and solid (α=0) emerges from the optimisation.
+**Definition**: A distributed scalar design field penalizes flow through solid-like regions via Darcy or Brinkman terms. The field range and which endpoint represents fluid are implementation-specific and must be read from the installed interpolation model/tutorial.
 
 **Characteristics**:
 - Design variable: scalar field (porosity or impermeability)
@@ -41,11 +43,14 @@ This reference guides topology and shape optimisation workflows. It defines the 
 - Best for: internal manifold design, heat sink topology, flow distribution
 
 **OpenFOAM support**:
-- Foundation: Not natively available; requires custom solver or external optimizer
-- OpenCFD: `adjointOptimisationFoam` with `porosity` or `topology` design variables (v2206+)
+- Foundation: no general native framework. Foundation 13 has a limited legacy
+  blockage-field pressure-loss application, but thermal objectives, generic
+  constraints and a general objective manager are absent.
+- OpenCFD: `adjointOptimisationFoam` with porosity or level-set design variables for
+  mono-fluid aerodynamic/isothermal problems (verified from v2312+)
 
 **Typical workflow**:
-1. Define initial design domain (all fluid, α=1)
+1. Define the initial all-fluid design value from the installed tutorial/source
 2. Run primal solver with Brinkman penalty in solid-like regions
 3. Solve adjoint for volume sensitivities
 4. Filter sensitivities (Helmholtz PDE)
@@ -63,7 +68,9 @@ This reference guides topology and shape optimisation workflows. It defines the 
 - Less common in OpenFOAM; often requires third-party libraries
 - Best for: problems requiring sharp interfaces, two-material optimisation
 
-**OpenFOAM support**: Custom or third-party only. Not natively available.
+**OpenFOAM support**: OpenCFD provides version-matched level-set topology support
+from v2312; Foundation requires custom or third-party code. Verify the installed
+release before writing dictionaries.
 
 ### Parameter Sweep Optimisation
 
@@ -81,7 +88,7 @@ This reference guides topology and shape optimisation workflows. It defines the 
 
 ### External Optimisation Orchestration
 
-**Definition**: OpenFOAM supplies primal (and optionally adjoint) evaluations. An external tool (DAKOTA, pyOpt, SciPy, custom Python) drives the design updates.
+**Definition**: OpenFOAM supplies primal (and optionally adjoint) evaluations. An external tool (DAKOTA, pyOptSparse, SciPy, custom Python) drives the design updates.
 
 **Characteristics**:
 - Maximum flexibility in optimisation algorithms
@@ -91,15 +98,26 @@ This reference guides topology and shape optimisation workflows. It defines the 
 
 **OpenFOAM support**: Any solver; requires external optimiser installation.
 
+## Required Routing for Pressure, Thermal and Multi-Objective Topology
+
+| Requested capability | Native route | External/custom route | Mandatory stop condition |
+|---|---|---|---|
+| Total-pressure-loss legacy blockage topology | Foundation 13 `adjointShapeOptimisationFoam`, only when binary/source evidence matches | Not required for its fixed objective | Thermal, generic volume constraint or Pareto objective requested |
+| General isothermal porosity/level-set topology | OpenCFD v2312+ `adjointOptimisationFoam` with exact-version tutorial/source evidence | `porousSimpleFoam` plus external optimiser | Only Foundation general-purpose primal solvers are installed |
+| Heat-transfer or CHT topology | No default native claim | Thermal primal (`foamMultiRun`/`chtMultiRegionFoam`) plus external optimiser, or custom thermal adjoint | No thermal-adjoint evidence and user has not accepted external/custom scope |
+| Scalarised multi-objective | Exact-version objective-manager evidence required | Weighted sum or epsilon-constraint in external driver | Objective scales/weights are undefined |
+| Pareto front | No default native claim | Multi-objective external driver such as DAKOTA or pyOptSparse/NSGA2 | Only a scalar optimiser is installed |
+
 ## Support Levels
 
-Every workflow declares one of three levels:
+Every workflow declares one of four levels:
 
 | Level | Symbol | Definition | User Action Required |
 |-------|--------|-----------|---------------------|
 | `native` | ✓ | Supported by detected installation with official examples or documentation | None |
 | `custom` | ⚙ | Requires compiled user code or source modification | User must compile and verify custom code |
 | `external` | ⇄ | Requires separately installed optimizer or coupling framework | User must install and configure external tool |
+| `unverified` | ? | Capability is claimed by neither installed evidence nor a validated workflow | Stop or reduce scope |
 
 **Assignment rules**:
 - Check `-help` output and installed tutorials before assigning `native`
@@ -114,7 +132,7 @@ The following classic templates ship with the skill in `templates/`. Each templa
 ### 1. Internal Flow Pressure-Loss Minimisation
 - **Directory**: `templates/internal-flow-pressure-loss/`
 - **Problem**: Minimize pressure drop through a duct, pipe bend, or manifold
-- **Optimisation family**: shape (native on Foundation/OpenCFD) or density-topology (native on OpenCFD v2206+)
+- **Optimisation family**: Foundation 13 legacy blockage topology or OpenCFD v2312+ isothermal density topology
 - **Typical objectives**: total pressure loss, dissipated power
 - **Typical constraints**: volume/area fraction ≤ threshold
 - **Flow**: steady, incompressible, laminar or turbulent (RANS)
@@ -138,9 +156,9 @@ The following classic templates ship with the skill in `templates/`. Each templa
 ### 4. Porous Density Topology Optimisation
 - **Directory**: `templates/porous-density-topology/`
 - **Problem**: Optimize material distribution in a design domain to minimize flow resistance
-- **Optimisation family**: density-topology (native on OpenCFD v2206+)
+- **Optimisation family**: density topology (native on OpenCFD v2312+)
 - **Typical objectives**: dissipated power, pressure loss, flow uniformity
-- **Typical constraints**: volume fraction, maximum temperature (with CHT)
+- **Typical constraints**: volume fraction; CHT and temperature constraints are routed to external/custom workflows
 - **Flow**: steady, incompressible, laminar or turbulent
 
 ### 5. Outlet Flow Uniformity Optimisation
@@ -157,7 +175,7 @@ The following classic templates ship with the skill in `templates/`. Each templa
 - **Optimisation family**: density-topology with thermal objectives
 - **Typical objectives**: minimize max temperature, maximize heat transfer
 - **Typical constraints**: pressure loss, volume fraction
-- **Flow**: steady, incompressible with conjugate heat transfer
+- **Flow**: steady conjugate heat transfer; native adjoint support is unverified and must not be assumed
 
 ### 7. Time-Averaged Transient Optimisation
 - **Directory**: `registry/learned-workflows/` (to be populated)
@@ -204,7 +222,7 @@ templates/<template-name>/
 workflow:
   name: "internal-flow-pressure-loss"
   status: "validated" | "experimental" | "deprecated"
-  distribution: ["openfoam.org:10", "openfoam.com:2206"]
+  distribution: ["openfoam.org:10", "openfoam.com:1906"]
   problem_fingerprint:
     flow_regime: [steady, incompressible]
     physics: [single-phase, isothermal]
@@ -239,7 +257,7 @@ These are configured in the adjoint dictionary (`system/adjointDict` or `constan
 ## Primal-Adjoint Iteration Pattern
 
 ```
-1.  Initialize design field α = α₀ (typically all fluid, α=1)
+1.  Initialize design field α = α₀ using the installed solver's all-fluid convention
 2.  FOR iteration = 1 to max_iterations:
 3.    a. Update Darcy penalty from α (Brinkman term)
 4.    b. Solve primal (Navier-Stokes + continuity)

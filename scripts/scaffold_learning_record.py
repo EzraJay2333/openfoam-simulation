@@ -1,126 +1,82 @@
 #!/usr/bin/env python3
-"""scaffold_learning_record.py — Step 11: Learning Candidate Scaffold
+"""Create a schema-versioned experimental workflow record."""
 
-Reads a simulation specification JSON and results summary, and produces a
-YAML learning candidate record for storage in registry/learned-workflows/.
-
-Usage:
-    python3 scaffold_learning_record.py \\
-        --spec simulation_spec.json \\
-        --results results_summary.json \\
-        --output registry/learned-workflows/<slug>.yaml
-
-The output is always status: experimental. Promotion to validated requires
-a separate rerun and explicit user approval.
-"""
+from __future__ import annotations
 
 import argparse
 import json
-import os
+import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import jsonschema
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = ROOT / "schemas" / "learning-record.schema.json"
+
+
+def canonical_id(value: Any, default: str = "unknown") -> str:
+    if value in (None, ""):
+        return default
+    return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", str(value).lower())).strip("_") or default
 
 
 def slugify(text: str) -> str:
-    """Convert a problem description to a filesystem-safe slug."""
-    return (
-        text.lower()
-        .replace(" ", "-")
-        .replace("_", "-")
-        .replace("/", "-")
-        .replace("\\", "-")
-    )
+    return canonical_id(text, "unnamed").replace("_", "-")
 
 
-def build_fingerprint(spec: dict) -> dict:
-    """Extract a stable problem fingerprint from the simulation spec."""
+def build_fingerprint(spec: dict[str, Any]) -> dict[str, Any]:
     opt = spec.get("optimisation", {})
     flow = spec.get("flow_regime", {})
     physics = spec.get("physical_models", {})
-
+    dimensions = spec.get("geometry", {}).get("dimensions", {}).get("type", "3d")
+    turbulence = physics.get("turbulence", {}).get("model", "laminar")
+    thermal = physics.get("thermal", {})
     return {
-        "flow_regime": flow.get("flow_type", "unknown"),
-        "compressibility": "incompressible",     # infer from spec
-        "turbulence": physics.get("turbulence", {}).get("model", "laminar"),
-        "phases": "single-phase",
-        "thermal": "isothermal",                  # update from physics.thermal
-        "geometry_class": spec.get("geometry", {}).get("dimensions", {}).get("type", "unknown"),
-        "spatial_dimensions": spec.get("geometry", {}).get("dimensions", {}).get("type", "3d"),
-        "optimisation_family": opt.get("type", "none"),
-        "objectives": [o.get("name") for o in opt.get("objectives", [])],
-        "constraints": [c.get("name") for c in opt.get("constraints", [])],
+        "flow_regime": canonical_id(flow.get("time_behavior", flow.get("flow_type", "unknown"))),
+        "compressibility": canonical_id(flow.get("compressibility", "incompressible")),
+        "turbulence": canonical_id(turbulence),
+        "phases": canonical_id(physics.get("phases", "single_phase")),
+        "thermal": "heat_transfer" if thermal.get("enabled") else "isothermal",
+        "geometry_class": canonical_id(spec.get("geometry", {}).get("class", "unknown")),
+        "spatial_dimensions": canonical_id(dimensions),
+        "optimisation_family": canonical_id(opt.get("type", "none")),
+        "objectives": [canonical_id(item.get("name")) for item in opt.get("objectives", [])],
+        "constraints": [canonical_id(item.get("name")) for item in opt.get("constraints", [])],
     }
 
 
-def scaffold(spec_path: str, results_path: str, output_path: str) -> dict:
-    """Generate a learning candidate YAML record."""
-
-    spec = {}
-    if os.path.exists(spec_path):
-        with open(spec_path) as f:
-            spec = json.load(f)
-
-    results = {}
-    if os.path.exists(results_path):
-        with open(results_path) as f:
-            results = json.load(f)
-
-    fingerprint = build_fingerprint(spec)
-    slug = slugify(spec.get("project_name", "unnamed"))
-
-    # Determine distribution compatibility from spec
-    of_identity = spec.get("environment", {}).get("of_identity", {})
-    distribution = of_identity.get("distribution_family", "unknown")
-    version = of_identity.get("version", "unknown")
-
-    record = {
-        # Metadata
+def build_record(spec: dict[str, Any], results: dict[str, Any]) -> dict[str, Any]:
+    identity = spec.get("environment", {}).get("of_identity", {})
+    version = str(identity.get("version", "unknown"))
+    return {
+        "schema_version": "2.0",
         "name": spec.get("project_name", "unnamed"),
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": "experimental",
-
-        # Version scoping
-        "distribution": distribution,
-        "version_range": {
-            "min": version,
-            "max": version,
-            "verified_on": [version],
-        },
-
-        # Problem fingerprint
-        "problem_fingerprint": fingerprint,
-
-        # Solver selection
+        "distribution": canonical_id(identity.get("distribution_family", "unknown")),
+        "version_range": {"min": version, "max": version, "verified_on": [version]},
+        "problem_fingerprint": build_fingerprint(spec),
         "solver_selection": {
             "selected": results.get("solver", spec.get("primal_solver", {}).get("application", "unknown")),
             "rejected_alternatives": results.get("rejected_solvers", []),
             "selection_rationale": results.get("solver_rationale", ""),
         },
-
-        # Support level
-        "support_level": spec.get("optimisation", {}).get("support_level", "native"),
-
-        # Sources
+        "support_level": canonical_id(spec.get("optimisation", {}).get("support_level", "experimental")),
         "sources": results.get("documentation_audit", []),
-
-        # Inputs
         "normalized_inputs": {
-            "geometry": spec.get("geometry", {}),
-            "materials": spec.get("materials", {}),
-            "flow_regime": spec.get("flow_regime", {}),
-            "boundary_conditions": spec.get("boundary_conditions", []),
-            "optimisation": spec.get("optimisation", {}),
-            "mesh": spec.get("mesh", {}),
+            key: spec.get(key, {} if key not in {"boundary_conditions"} else [])
+            for key in ("geometry", "materials", "flow_regime", "boundary_conditions", "optimisation", "mesh")
         },
-
-        # Execution
         "execution": {
             "case_directory": results.get("case_path", ""),
             "commands": results.get("commands", []),
             "stages_completed": results.get("stages_completed", []),
+            "run_manifest": results.get("run_manifest", ""),
         },
-
-        # Results
         "results": {
             "primal_converged": results.get("primal_converged", False),
             "adjoint_converged": results.get("adjoint_converged", False),
@@ -131,8 +87,6 @@ def scaffold(spec_path: str, results_path: str, output_path: str) -> dict:
             "design_iterations": results.get("design_iterations", 0),
             "final_mesh_cells": results.get("final_mesh_cells", 0),
         },
-
-        # Validation
         "validation": {
             "mass_imbalance": results.get("mass_imbalance"),
             "conservation_ok": results.get("conservation_ok", False),
@@ -141,84 +95,54 @@ def scaffold(spec_path: str, results_path: str, output_path: str) -> dict:
             "residuals_within_tolerance": results.get("residuals_within_tolerance", False),
             "overall_assessment": results.get("overall_assessment", "UNASSESSED"),
         },
-
-        # Failure modes
         "known_failure_modes": results.get("failure_modes_encountered", []),
         "recovery_rules": results.get("recovery_rules", []),
-
-        # Reusable files
         "reusable_files": results.get("key_output_files", []),
-
-        # Warnings
         "warnings": results.get("warnings", []),
     }
 
-    # Write YAML
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    with open(output_path, "w") as f:
-        f.write(yaml_dump(record))
+def validate_record(record: dict[str, Any]) -> None:
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    jsonschema.validate(record, schema)
 
+
+def write_record(record: dict[str, Any], output_path: str | Path) -> None:
+    validate_record(record)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        yaml.safe_dump(record, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+        newline="\n",
+    )
+    parsed = yaml.safe_load(output.read_text(encoding="utf-8"))
+    validate_record(parsed)
+
+
+def scaffold(spec_path: str, results_path: str, output_path: str) -> dict[str, Any]:
+    spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+    results_file = Path(results_path)
+    results = json.loads(results_file.read_text(encoding="utf-8")) if results_file.exists() else {}
+    record = build_record(spec, results)
+    write_record(record, output_path)
     print(f"Learning candidate written to: {output_path}")
-    print(f"Status: experimental")
-    print(f"To promote to validated: re-run with a clean case, confirm all validation thresholds, and request promotion.")
+    print("Status: experimental")
     return record
 
 
-def yaml_dump(data: dict, indent: int = 0) -> str:
-    """Simple YAML dumper (no PyYAML dependency required)."""
-    lines = []
-    prefix = "  " * indent
-
-    for key, value in data.items():
-        if isinstance(value, dict):
-            lines.append(f"{prefix}{key}:")
-            lines.append(yaml_dump(value, indent + 1))
-        elif isinstance(value, list):
-            if not value:
-                lines.append(f"{prefix}{key}: []")
-            else:
-                lines.append(f"{prefix}{key}:")
-                for item in value:
-                    if isinstance(item, dict):
-                        lines.append(f"{prefix}  - ")
-                        lines.append(yaml_dump(item, indent + 2).lstrip())
-                    elif isinstance(item, str):
-                        escaped = item.replace("'", "''")
-                        lines.append(f"{prefix}  - '{escaped}'")
-                    else:
-                        lines.append(f"{prefix}  - {item}")
-        elif isinstance(value, bool):
-            lines.append(f"{prefix}{key}: {'true' if value else 'false'}")
-        elif value is None:
-            lines.append(f"{prefix}{key}: null")
-        elif isinstance(value, str):
-            if "\n" in value or '"' in value or len(value) > 80:
-                escaped = value.replace("'", "''")
-                lines.append(f"{prefix}{key}: '{escaped}'")
-            else:
-                lines.append(f"{prefix}{key}: '{value}'")
-        else:
-            lines.append(f"{prefix}{key}: {value}")
-
-    return "\n".join(lines) + "\n"
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Scaffold a learning candidate record from simulation results."
-    )
-    parser.add_argument("--spec", required=True, help="Path to simulation_spec.json")
-    parser.add_argument("--results", required=True, help="Path to results summary JSON")
-    parser.add_argument("--output", required=True, help="Output YAML path")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--spec", required=True)
+    parser.add_argument("--results", required=True)
+    parser.add_argument("--output", required=True)
     args = parser.parse_args()
-
-    if not os.path.exists(args.spec):
+    if not Path(args.spec).is_file():
         print(f"ERROR: spec file not found: {args.spec}", file=sys.stderr)
-        sys.exit(1)
-
+        return 1
     scaffold(args.spec, args.results, args.output)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

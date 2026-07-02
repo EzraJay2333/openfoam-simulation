@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "learning-record.schema.json",
+  "type": "object",
+  "required": ["schema_version", "name", "created_at", "status", "distribution", "version_range", "problem_fingerprint", "solver_selection", "execution", "results", "validation"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "name": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string"},
+    "status": {"const": "experimental"},
+    "distribution": {"type": "string"},
+    "version_range": {"type": "object"},
+    "problem_fingerprint": {
+      "type": "object",
+      "required": ["flow_regime", "compressibility", "turbulence", "spatial_dimensions", "optimisation_family", "objectives", "constraints"]
+    },
+    "solver_selection": {"type": "object"},
+    "execution": {"type": "object"},
+    "results": {"type": "object"},
+    "validation": {"type": "object"}
+  },
+  "additionalProperties": true
+}

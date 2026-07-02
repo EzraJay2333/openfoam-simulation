@@ -7,7 +7,7 @@ Guide the user through compute resource configuration: MPI parallel decompositio
 ## When to Enter This Module
 
 - Step 3 (Structured Intake): Collect compute preferences
-- Step 9 (Staged Execution): Apply chosen parallelization strategy
+- Step 10 (Staged Execution): Apply chosen parallelization strategy
 - Anytime the user asks about performance, speedup, or GPU
 
 ## Decision Flow

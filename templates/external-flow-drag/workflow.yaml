@@ -1,21 +1,22 @@
 workflow:
   name: "external-flow-drag"
-  status: validated
+  status: experimental
   distribution:
     - "openfoam.org:10"
     - "openfoam.com:2206"
   problem_fingerprint:
     flow_regime: [steady, incompressible]
-    physics: [single-phase, isothermal]
+    physics: [single_phase, isothermal]
     geometry_class: [external]
-    spatial_dimensions: [2d-planar, 3d]
+    spatial_dimensions: [2d_planar, 3d]
     optimisation_family: [shape]
     objectives: [drag]
     constraints: [volume, lift]
-    design_variables: [boundary-displacement]
-  support_level: native
+    design_variables: [boundary_displacement]
+  support_level: unverified
   prerequisites:
-    - "adjointOptimisationFoam (OpenCFD v2206+) or adjointShapeOptimizationFoam (Foundation)"
+    - "OpenCFD v1906+ adjointOptimisationFoam with exact-version shape/force-objective tutorial and source evidence"
+    - "Foundation solver accepted only when installed evidence proves boundary-displacement and drag-objective support; Foundation 13 legacy pressure-loss blockage optimisation does not qualify"
     - "snappyHexMesh for body-fitted mesh generation"
     - "kOmegaSST or SpalartAllmaras turbulence model"
     - "Displacement-based mesh morphing (mesh.update(), moveDynamicMesh)"
@@ -35,7 +36,7 @@ workflow:
     - stage: validate
       description: "Check Cd reduction, constraint satisfaction, mesh quality"
   known_issues:
-    - "Foundation solver freezes turbulence — inaccurate gradients for separated flows"
+    - "Foundation turbulence-adjoint treatment is release-specific; reject the workflow when installed evidence is absent"
     - "Mesh morphing may produce negative volumes for >20% boundary displacement"
     - "y+ must stay in valid range across mesh morphing (wall functions or low-Re)"
   references:
